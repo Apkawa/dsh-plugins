@@ -1,0 +1,104 @@
+# v1: автоподхват контекста из llama.cpp `/props`
+
+Самодостаточная спецификация первой итерации плагина `dsh-model-settings`. Полный контекст проекта и отложенные задачи (T2–T5) — в [../model-settings/spec.md](../model-settings/spec.md).
+
+## 1. Цель
+
+Для OpenAI-compatible route (llama.cpp) автоматически подцепить реальный размер контекста модели: `GET /props?model=X&autoload=false` → `default_generation_settings.n_ctx` → округлить вниз до тысяч → записать как `contextWindow` модели в settings dsh. Сейчас модель падает на дефолт 262144, потому что `GET /v1/models` контекст не возвращает.
+
+## 2. Принятые решения (ответы на вопросы spec)
+
+| # | Вопрос | Решение |
+|---|--------|---------|
+| 1 | Имя пакета | `@apkawa/dsh-model-settings`; публикуем в npm **не будем** — только локальный workspace-пакет |
+| 2 | Прогон при старте | **Нет.** Подхват: (а) watcher на добавление новых моделей в section `llm-pi-ai`; (б) при открытии редактирования модели в UI, если у неё пустой `contextWindow` — автоподхватить |
+| 3 | Округление | Floor до тысяч: `roundDown(n) = floor(n / 1000) * 1000`. Подтверждено: конфиг llama.cpp `ctx=120000` возвращает `n_ctx=120064`; меньшие контексты не используем |
+| 4 | Куда писать | **Всегда per-model** — `models[<id>].contextWindow` в namespace `llm-pi-ai`, путь `providers.<route>`. `defaultContextWindow` не используем. Если записи модели нет в списке — создаём `{id, contextWindow}` (у hand-declared route список `models` обязателен: без него dsh отклоняет конфиг «resolves no models») |
+| 5 | PR в dsh/pi-ai для T3 | Отложено; изучим позже, как всё расширяется в парадигме dsh |
+
+## 3. Правила v1
+
+### 3.1 Scope маршрутов и моделей
+
+В scope: hand-declared routes с `api: openai-completions` и заданным `baseURL`, чьи модели перечислены в `models[]`. Модель обрабатывается, если у неё отсутствует (или равно 0) `contextWindow`.
+
+Условия успеха проба:
+- `GET <baseURL>/props?model=<id>&autoload=false` → 200;
+- JSON содержит `default_generation_settings.n_ctx > 0`.
+
+Любой сбой (404, нет поля, таймаут, не-llama.cpp) — тихий skip + log. Маршрут и сессия не ломаются.
+
+### 3.2 Округление
+
+```
+roundDown(n) = n <= 1000 ? n : floor(n / 1000) * 1000
+```
+
+Примеры: `21345 → 21000`, `120064 → 120000`, `8192 → 8000`, `999 → 999`.
+
+### 3.3 Auth
+
+Ключ route (`apiKeyEnv`) резолвится через credentials seam dsh и отправляется как `Authorization: Bearer <key>`. Если ключ не задан — запрос без auth (llama.cpp локально часто работает без ключа).
+
+### 3.4 Запись в settings
+
+- Namespace: `llm-pi-ai`, путь: `providers.<route>.models[<id>].contextWindow = rounded`.
+- Через `settings.mutate` с ревизионным fencing; при `SettingsConflictError` — перечитать и повторить один раз.
+- **Не затираем** уже выставленные значения (пользовательский override имеет приоритет): заполняем только отсутствующие/нулевые `contextWindow`.
+
+## 4. Механизмы
+
+### 4.1 Host-половина (плагин, namespace `model-settings`)
+
+Модули host-половины (один = одна ответственность, SOLID/S):
+
+| Модуль | Ответственность | Зависимости |
+|--------|-----------------|-------------|
+| `round.ts` | округление `n_ctx` | нет (чистая функция) |
+| `props.ts` | разбор/валидация ответа `/props` → `{nCtx, params?, modalities?}` | нет (чистая функция) |
+| `probe.ts` | HTTP-проб: auth, таймаут, лимит тела ≤4МБ, классификация ошибок | `Fetcher` (инжект), `props`, `round` |
+| `settings-io.ts` | чтение section `llm-pi-ai`; запись `contextWindow` per-model с fencing; создание записи модели при отсутствии | `SettingsStore` (инжект) |
+| `autofill.ts` | оркестрация: очередь, конкурренция ≤3, guard самоцикла, решение «новые модели без contextWindow» | `probe`, `settings-io` |
+| `index.ts` | composition root плагина: `apply(ctx)` — регистрация namespace, сервиса, watcher'а; ничего не считает сам | всё выше |
+
+1. **Проб**: `probeProps(route, modelId) → {nCtx, rounded}` — один GET `/props`, лимит тела ответа (≤4МБ, паттерн discovery dsh), таймаут, Bearer из credentials.
+2. **Автоподхват (watcher)**: подписка на изменения namespace `llm-pi-ai`. Новые модели без `contextWindow` → очередь пробов (конкурренция ≤3). Guard от самоцикла: запись плагина помечается и не триггерит повторный прогон.
+3. **По запросу**: метод сервиса для client-половины — `fetchProps(route, modelId)` → preview `{nCtx, rounded}` без записи; `applyContextWindow(route, modelId)` → запись в settings.
+
+### 4.2 Web-карточка (client-половина)
+
+Слот `settings.plugin.item`, ключ namespace плагина:
+- список моделей OpenAI-compatible routes (из section `llm-pi-ai`);
+- на модели: текущий `contextWindow`; если пустой — автоподхват при открытии редактирования + кнопка «Fetch props» (preview → Apply);
+- запись в settings.yaml через `settingsScope`.
+
+### 4.3 Тестовые юниты (TDD)
+
+Каждый модуль покрывается тестами **до** реализации (red → green → refactor):
+
+- `roundDown`: таблица `21345→21000`, `120064→120000`, `8192→8000`, `1000→1000`, `999→999`; нечисловой/отрицательный → skip.
+- `props.ts`: fixture из draft.md (позитив); нет `n_ctx`; `n_ctx <= 0`; не-JSON; пустое тело.
+- `probe.ts` (stub `Fetcher`): успех; 404; таймаут; тело >4МБ; не-200 → skip/null, а не исключение наружу.
+- `settings-io.ts` (fake `SettingsStore`): запись per-model; создание записи при отсутствии id; существующий `contextWindow` **не** затирается; `SettingsConflictError` → перечитать и повторить один раз; повторный конфликт → бросить.
+- `autofill.ts` (fake события + fake store): новая модель без `contextWindow` → проб; запись плагина → не триггерит повторный прогон; конкурренция ≤3; при старте — **ноль** запросов.
+- Клиент: ручная приёмка по чеклисту (этап 4/5) — unit-тесты React-карточки вне v1 (KISS).
+
+### 4.4 KISS-ограничения v1
+
+- Никаких config-опций в namespace `model-settings` для v1: ни тумблеров, ни настраиваемой конкурренции (лимит жёстко ≤3).
+- Одна wire-протокольная ветка: только `openai-completions`. Другие протоколы не абстрактируем.
+- Новые зависимости сверх peer (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-settings`, `@deepseek-ai/schemastery`) — запрещены.
+- `params`/`modalities` из `/props` читаются и возвращаются пробом, но **не используются** до T3/T4 (потребители добавляются отдельно, OCP).
+
+## 5. Не входит в v1
+
+Семплеры (температура, top_p и пр.), modalities, reasoning effort — данные из `/props` (`params`, `modalities`) проб уже читает и возвращает, использование отложено: [../model-settings/spec.md §5](../model-settings/spec.md#5-отложенные-задачи).
+
+## 6. Форма проекта
+
+- Локальный npm-пакет `@apkawa/dsh-model-settings` (pnpm workspace, TypeScript strict, node >= 24, ESM):
+  - host: `src/` — плагин с namespace `model-settings`, сервис проба, watcher;
+  - client: `src/client/` — карточка; export `./client` + `dsh.client` в package.json;
+  - peer/deps: `@deepseek-ai/cordis`, `@deepseek-ai/dsh-settings`, `@deepseek-ai/schemastery`;
+  - монтаж в deployment: строка в `cordis.yml` (+ пакет в node_modules).
+- Client-bundle: lazy-CJS factory артефакт (preset dsh не опубликован — формат воспроизводим сами, cookbook adding-a-settings-card «Packaging»).
