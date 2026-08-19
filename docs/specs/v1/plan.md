@@ -8,6 +8,17 @@
 - **KISS**: ≤6 модулей host-половины (таблица в spec §4.1), нет config-опций, нет новых зависимостей сверх peer, одна протокольная ветка (`openai-completions`).
 - **SOLID**: оркестрация зависит от `Fetcher`/`SettingsStore`, а не от `fetch`/`ctx.settings`; T2–T5 подключаются новыми потребителями результата проба, без переписывания ядра.
 
+## Track A. First-class `api: 'llama.cpp'` в dsh (отложено, отдельный репо)
+
+Логический подтип из spec §3.1 становится first-class типом провайдера: декларация `api: 'llama.cpp'` в settings.yaml начинает работать нативно. **Не блокирует v1** — плагин уже распознаёт оба api-значения; при возможности декларации таргет проба становится точным автоматически.
+
+- [ ] `dsh-llm-pi-ai/src/provider.ts`: PROTOCOLS table += `'llama.cpp': openAICompletionsApi` (wire = openai-completions, та же реализация).
+- [ ] `discovery.ts`: LISTABLE_PROTOCOLS += `'llama.cpp'` (`GET /v1/models` работает для него как для openai-completions).
+- [ ] `catalog.ts`: compat-проверки (`thinkingFormat`, `supportsReasoningEffort`) считают `llama.cpp` openai-completions («расширяет» семантика).
+- [ ] Тесты: route с `api: 'llama.cpp'` резолвится в тот же pi-ai provider, что и `openai-completions`.
+
+**Критерий:** в settings.yaml можно объявить `api: 'llama.cpp'`; dsh принимает конфиг; плагин пробует такие routes без эвристики.
+
 ## Этап 0. Каркас проекта + тестовая инфраструктура
 
 - [ ] pnpm workspace: корневой `package.json` (`private`, node>=24, ESM), `pnpm-workspace.yaml`.
@@ -36,7 +47,8 @@ TDD: тесты пишутся первыми, затем реализация.
 ## Этап 2. Settings: чтение route + запись contextWindow per-model
 
 **Тесты (red), fake `SettingsStore`:**
-- [ ] Чтение: из section `llm-pi-ai` берутся только hand-declared routes с `api: openai-completions` + `baseURL`; модели из `models[]`.
+- [ ] Тип провайдера (§3.1): route — кандидат при `api ∈ {openai-completions, llama.cpp}` + заданном `baseURL`; `api: 'llama.cpp'` = тип уже подтверждён; любой другой api / пустой `baseURL` → не кандидат.
+- [ ] Чтение: из section `llm-pi-ai` берутся только hand-declared candidate routes; модели из `models[]`.
 - [ ] Запись всегда `models[<id>].contextWindow = rounded`; записи модели нет → создаётся `{id, contextWindow}`.
 - [ ] Существующий ненулевой `contextWindow` **не** затирается (override пользователя).
 - [ ] `SettingsConflictError` → перечитать и повторить один раз; второй конфликт → ошибка наружу.

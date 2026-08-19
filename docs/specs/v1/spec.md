@@ -15,18 +15,26 @@
 | 3 | Округление | Floor до тысяч: `roundDown(n) = floor(n / 1000) * 1000`. Подтверждено: конфиг llama.cpp `ctx=120000` возвращает `n_ctx=120064`; меньшие контексты не используем |
 | 4 | Куда писать | **Всегда per-model** — `models[<id>].contextWindow` в namespace `llm-pi-ai`, путь `providers.<route>`. `defaultContextWindow` не используем. Если записи модели нет в списке — создаём `{id, contextWindow}` (у hand-declared route список `models` обязателен: без него dsh отклоняет конфиг «resolves no models») |
 | 5 | PR в dsh/pi-ai для T3 | Отложено; изучим позже, как всё расширяется в парадигме dsh |
+| 6 | Новый тип провайдера `llama.cpp` | Плагин моделирует его как **логический подтип** openai-compatible: на wire — та же реализация (`openAICompletionsApi`), новых протокольных веток нет. Различие декларативное: route с `api: 'llama.cpp'` — явно llama.cpp-сервер (проб `/props` точный, без эвристики); `openai-completions` — legacy-декларация (существующие конфиги; не-llama.cpp эндпоинты тихо skip'аются). dsh **не трогаем**; промоушн в first-class `api: 'llama.cpp'` в `dsh-llm-pi-ai` — отложенный Track A (plan), при возможности декларации таргет проба становится точным автоматически |
 
 ## 3. Правила v1
 
-### 3.1 Scope маршрутов и моделей
+### 3.1 Тип провайдера и scope
 
-В scope: hand-declared routes с `api: openai-completions` и заданным `baseURL`, чьи модели перечислены в `models[]`. Модель обрабатывается, если у неё отсутствует (или равно 0) `contextWindow`.
+Плагин вводит **тип провайдера** как логический подтип wire-протокола: базовая ветка — `openai-completions`, над ней — специализация `llama.cpp` (те же OpenAI-compatible запросы + специфичные эндпоинты llama.cpp, прежде всего `/props`). На wire ничего не меняется — тип декларативный маркер, на который ключится scope и будущие T2–T5. dsh не трогаем: распознаём `api: 'llama.cpp'` **при возможности** (если route его объявит), иначе выводим тип пробом.
 
-Условия успеха проба:
+Route — **кандидат llama.cpp**, если:
+- `api ∈ { 'openai-completions', 'llama.cpp' }` и задан `baseURL`;
+  - `'llama.cpp'` — явная декларация (новый first-class тип dsh, см. Track A); проб всё равно идёт за `n_ctx`, но тип уже подтверждён;
+  - `'openai-completions'` — базовая wire-ветка, тип выводится эвристикой.
+
+Route **подтверждается как llama.cpp**, если успешен:
 - `GET <baseURL>/props?model=<id>&autoload=false` → 200;
 - JSON содержит `default_generation_settings.n_ctx > 0`.
 
-Любой сбой (404, нет поля, таймаут, не-llama.cpp) — тихий skip + log. Маршрут и сессия не ломаются.
+В scope: hand-declared routes-кандидаты с моделями из `models[]`. Модель обрабатывается, если у неё отсутствует (или равно 0) `contextWindow`; заполняется только для подтверждённого llama.cpp. Плагин **никогда не пишет** поле `api` в settings — тип только читается/выводится.
+
+Любой сбой (404, нет поля, таймаут, не-llama.cpp) — тихий skip + log: route остаётся незавершённым кандидатом, маршрут и сессия не ломаются.
 
 ### 3.2 Округление
 
@@ -57,7 +65,7 @@ roundDown(n) = n <= 1000 ? n : floor(n / 1000) * 1000
 | `round.ts` | округление `n_ctx` | нет (чистая функция) |
 | `props.ts` | разбор/валидация ответа `/props` → `{nCtx, params?, modalities?}` | нет (чистая функция) |
 | `probe.ts` | HTTP-проб: auth, таймаут, лимит тела ≤4МБ, классификация ошибок | `Fetcher` (инжект), `props`, `round` |
-| `settings-io.ts` | чтение section `llm-pi-ai`; запись `contextWindow` per-model с fencing; создание записи модели при отсутствии | `SettingsStore` (инжект) |
+| `settings-io.ts` | тип провайдера route (кандидат/подтверждён, §3.1); чтение section `llm-pi-ai`; запись `contextWindow` per-model с fencing; создание записи модели при отсутствии | `SettingsStore` (инжект) |
 | `autofill.ts` | оркестрация: очередь, конкурренция ≤3, guard самоцикла, решение «новые модели без contextWindow» | `probe`, `settings-io` |
 | `index.ts` | composition root плагина: `apply(ctx)` — регистрация namespace, сервиса, watcher'а; ничего не считает сам | всё выше |
 
@@ -86,7 +94,7 @@ roundDown(n) = n <= 1000 ? n : floor(n / 1000) * 1000
 ### 4.4 KISS-ограничения v1
 
 - Никаких config-опций в namespace `model-settings` для v1: ни тумблеров, ни настраиваемой конкурренции (лимит жёстко ≤3).
-- Одна wire-протокольная ветка: только `openai-completions`. Другие протоколы не абстрактируем.
+- Одна wire-протокольная ветка: оба кандидата (`llama.cpp`, `openai-completions`) резолвятся в одну реализацию; новых протокольных веток нет (тип — маркер, §3.1). Другие протоколы не абстрактируем.
 - Новые зависимости сверх peer (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-settings`, `@deepseek-ai/schemastery`) — запрещены.
 - `params`/`modalities` из `/props` читаются и возвращаются пробом, но **не используются** до T3/T4 (потребители добавляются отдельно, OCP).
 
