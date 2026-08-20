@@ -15,7 +15,7 @@
 | 3 | Округление | Floor до тысяч: `roundDown(n) = floor(n / 1000) * 1000`. Подтверждено: конфиг llama.cpp `ctx=120000` возвращает `n_ctx=120064`; меньшие контексты не используем |
 | 4 | Куда писать | **Всегда per-model** — `models[<id>].contextWindow` в namespace `llm-pi-ai`, путь `providers.<route>`. `defaultContextWindow` не используем. Если записи модели нет в списке — создаём `{id, contextWindow}` (у hand-declared route список `models` обязателен: без него dsh отклоняет конфиг «resolves no models») |
 | 5 | PR в dsh/pi-ai для T3 | Отложено; изучим позже, как всё расширяется в парадигме dsh |
-| 6 | Новый тип провайдера `llama.cpp` | Плагин моделирует его как **логический подтип** openai-compatible: на wire — та же реализация (`openAICompletionsApi`), новых протокольных веток нет. Различие декларативное: route с `api: 'llama.cpp'` — явно llama.cpp-сервер (проб `/props` точный, без эвристики); `openai-completions` — legacy-декларация (существующие конфиги; не-llama.cpp эндпоинты тихо skip'аются). dsh **не трогаем**; промоушн в first-class `api: 'llama.cpp'` в `dsh-llm-pi-ai` — отложенный Track A (plan), при возможности декларации таргет проба становится точным автоматически |
+| 6 | Новый тип провайдера `llama.cpp` | Плагин моделирует его как **логический подтип** openai-compatible: на wire — та же реализация (`openAICompletionsApi`), новых протокольных веток нет. Различие декларативное: route с `api: 'llama.cpp'` — явно llama.cpp-сервер (листинг `/v1/models` + парсинг preset, без эвристики); `openai-completions` — legacy-декларация (существующие конфиги; не-llama.cpp эндпоинты тихо skip'аются). dsh **не трогаем**; промоушн в first-class `api: 'llama.cpp'` в `dsh-llm-pi-ai` — отложенный Track A (plan), при возможности декларации таргет проба становится точным автоматически |
 
 ## 3. Правила v1
 
@@ -86,7 +86,7 @@ roundDown(n) = n <= 1000 ? n : floor(n / 1000) * 1000
 
 Слот `settings.plugin.item`, ключ namespace плагина:
 - список моделей OpenAI-compatible routes (из section `llm-pi-ai`);
-- на модели: текущий `contextWindow`; если пустой — автоподхват при открытии редактирования + кнопка «Fetch props» (preview → Apply);
+- на модели: текущий `contextWindow`; если пустой — автоподхват при открытии редактирования + кнопка «Fetch models» (листинг preview → batch Apply);
 - запись в settings.yaml через `settingsScope`.
 
 ### 4.3 Тестовые юниты (TDD)
@@ -94,10 +94,10 @@ roundDown(n) = n <= 1000 ? n : floor(n / 1000) * 1000
 Каждый модуль покрывается тестами **до** реализации (red → green → refactor):
 
 - `roundDown`: таблица `21345→21000`, `120064→120000`, `8192→8000`, `1000→1000`, `999→999`; нечисловой/отрицательный → skip.
-- `props.ts`: fixture из draft.md (позитив); нет `n_ctx`; `n_ctx <= 0`; не-JSON; пустое тело.
-- `probe.ts` (stub `Fetcher`): успех; 404; таймаут; тело >4МБ; не-200 → skip/null, а не исключение наружу.
+- `props.ts`: fixture entry `/v1/models` с INI preset (`ctx-size = N`); есть `fit-ctx` без `ctx-size`; ни то ни другое (unknown); пустой/отсутствующий preset → null.
+- `probe.ts` (stub `Fetcher`): успех листинга; 404; таймаут; тело >4МБ; не-200 → skip/null, а не исключение наружу.
 - `settings-io.ts` (fake `SettingsStore`): запись per-model; создание записи при отсутствии id; существующий `contextWindow` **не** затирается; `SettingsConflictError` → перечитать и повторить один раз; повторный конфликт → бросить.
-- `autofill.ts` (fake события + fake store): новая модель без `contextWindow` → проб; запись плагина → не триггерит повторный прогон; конкурренция ≤3; при старте — **ноль** запросов.
+- `autofill.ts` (fake listing + fake store): модели без `contextWindow` → batch-заполнение из листинга; запись плагина → не триггерит повторный прогон; один листинг на route; при старте — **ноль** запросов.
 - Клиент: ручная приёмка по чеклисту (этап 4/5) — unit-тесты React-карточки вне v1 (KISS).
 
 ### 4.4 KISS-ограничения v1
