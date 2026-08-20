@@ -1,97 +1,26 @@
 # @apkawa/dsh-model-settings
 
-Автозаполнение `contextWindow` для моделей llama.cpp в настройках dsh: плагин читает секцию
-`llm-pi-ai`, находит модели **без** ненулевого `contextWindow`, пробует их `/props` и пишет
-округлённое значение обратно. В settings появляется карточка, где модель можно прозондировать
-вручную и применить значение.
+Auto-fills `contextWindow` for llama.cpp models in dsh's Models settings. When you add or
+edit a model under a candidate provider (openai-completions / llama.cpp with a baseURL),
+the plugin fetches the provider's `/v1/models` listing, reads each model's INI preset
+(`ctx-size`, else `fit-ctx`), and writes the rounded value into the model's `contextWindow`.
 
-## Что делает
+## How it works
 
-- **Автозаполнение (watcher).** При каждом коммите секции `llm-pi-ai` запускает один раунд:
-  собирает модели-кандидаты без `contextWindow`, пробует `/props?model=<id>&autoload=false`
-  (параллельно ≤3), пишет подтверждённые значения. Модель, у которой уже есть ненулевой
-  `contextWindow`, не пробуется — это и есть защита от самоцикла: наша же запись не
-  запускает новый раунд.
-- **Карточка в settings.** Слот `settings.plugin.item` показывает модели кандидатных
-  провайдеров; для каждой можно запросить `/props` (RPC `fetchProps`) и применить
-  `rounded` (RPC `applyContextWindow`). Данные приходят по RPC, не из секции плагина.
+- **Watcher** on `settings/updated` (host side, filtered to the `llm-pi-ai` section).
+- For each candidate route: one GET `<baseURL>/v1/models`, parse INI presets, fill every
+  model that has no nonzero `contextWindow` yet.
+- **Self-cycle guard**: a route whose models are all already sized is skipped entirely, so
+  our own write never schedules another round.
+- The existing Models UI displays the result (no separate card; the client half is disabled).
 
-## Кандидаты и подтверждение
+## Install
 
-Кандидат — провайдер с `api ∈ {openai-completions, llama.cpp}` и `baseURL`. Подтверждён —
-`/props` вернул 200 и `n_ctx > 0`. Заполняется **только** `contextWindow` (округление вниз);
-значение `api` не меняется никогда. Пользовательское переопределение `contextWindow` не
-перезаписывается: модель с уже заданным значением не входит в очередь.
-
-## Модули (host)
-
-| модуль | ответственность |
-| --- | --- |
-| `round.ts` | округление вниз до «красивого» значения |
-| `props.ts` | разбор тела `/props` (`n_ctx`, `params`, `modalities`) |
-| `probe.ts` | один HTTP-проб: URL, Bearer, таймаут, потолок 4 МБ, любая ошибка → `null` |
-| `settings-io.ts` | тип секции, чтение, запись `providers.<route>.models` (повтор при конфликте ревизии) |
-| `autofill.ts` | очередь пробов (≤3), запись подтверждённых, guard в `collectJobs` |
-| `index.ts` | composition root: связывает модули с швами dsh (settings, события, RPC) |
-
-Оркестрация зависит от маленьких интерфейсов (`Fetcher`, `SettingsStore`), не от
-конкретных швов dsh или `fetch` — каждый модуль тестируется отдельно.
-
-## Монтаж в profile
-
-Плагин — обычный cordis-пакет (host: `lib/index.js`, client: `lib/client.js`). Чтобы его
-загрузить, пакет должен резолвиться в node_modules профиля и быть объявлен строкой в
-`cordis.patch.yml` профиля.
-
-1. Сделайте пакет доступным для профиля — например, локальной зависимостью
-   (`file:`) в `package.json` профиля:
-
-   ```jsonc
-   // ~/.dsh/profiles/web/package.json
-   { "dependencies": { "@apkawa/dsh-model-settings": "file:/путь/к/packages/dsh-model-settings" } }
-   ```
-
-   затем `pnpm install` в каталоге профиля. (После публикации — обычная версия из реестра.)
-
-2. Добавьте строку в `cordis.patch.yml` профиля:
-
-   ```yaml
-   - insert:
-       - id: model-settings
-         name: '@apkawa/dsh-model-settings'
-   ```
-
-3. Перезапустите `dsh web`. Плагин зарегистрирует секцию `model-settings`, подключит
-   watcher и (если есть транспорт connection) RPC-канал `/model-settings`.
-
-> Секция плагина в v1 пуста: пользовательских настроек нет. Карточка появляется, потому что
-> Host обслуживает ключ; данные карточки приходят по RPC.
-
-## Настройка
-
-Отдельных опций у плагина нет. Он читает существующую секцию `llm-pi-ai`:
-
-```yaml
-llm-pi-ai:
-  providers:
-    <route>:
-      api: llama.cpp        # или openai-completions — оба кандидаты
-      baseURL: http://host:8080   # корень llama.cpp (без /v1), чтобы /props был на месте
-      apiKeyEnv: MY_KEY       # необязательно; ключ берётся из process.env[apiKeyEnv]
-      models:
-        - id: some-model     # без contextWindow → попадёт в автозаполнение
+```
+dsh plugin --profile web add github:apkawa/dsh-plugins#path:/packages/dsh-model-settings
 ```
 
-Для корректного проба `baseURL` должен указывать на **корень** llama.cpp (эндпоинт `/props`
-находится в корне, не под `/v1`).
+## Development
 
-## Known limitations (v1)
-
-- Запись идёт только в `providers.<route>.models`, никогда во всю секцию — чтобы не
-  затереть прочее. Если schema dsh отпишет запись чужого namespace, fallback: собственный
-  namespace с копией значений (риск #1 плана).
-- Нет запуска при старте: на старте запросов нет; автозаполнение идёт только по событию
-  коммита `llm-pi-ai`.
-- Конкурентность проб ≤3; потолок тела ответа 4 МБ; таймаут проба 15 с.
-- `contextWindow` пишется округлённым вниз; `api`, `params`, `modalities` в настройках не
-  меняются (mapping для T2–T5 уже есть в пробах, но v1 не пишет их).
+See [AGENTS.md](../../AGENTS.md) for principles + pitfalls, and
+[docs/ai/key-moments.md](../../docs/ai/key-moments.md) for architectural reference.
