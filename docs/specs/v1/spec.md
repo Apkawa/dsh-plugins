@@ -4,7 +4,7 @@
 
 ## 1. Цель
 
-Для OpenAI-compatible route (llama.cpp) автоматически подцепить реальный размер контекста модели: `GET /props?model=X&autoload=false` → `default_generation_settings.n_ctx` → округлить вниз до тысяч → записать как `contextWindow` модели в settings dsh. Сейчас модель падает на дефолт 262144, потому что `GET /v1/models` контекст не возвращает.
+Для OpenAI-compatible route (llama.cpp) автоматически подцепить реальный размер контекста модели из **листинга `/v1/models`**: каждый entry несёт `status.preset` — INI-конфиг llama-server, откуда берём `ctx-size` (или `fit-ctx`, если `ctx-size` нет) → округлить вниз до тысяч → записать как `contextWindow` модели в settings dsh. Сейчас модель падает на дефолт 262144, потому что discovery dsh читает top-level `context_window`, а llama.cpp его не заполняет (`null`); реальный размер живёт в конфиге модели (`status.preset`). `/props?autoload=false` работает только для **загруженной** модели (unloaded → 400), поэтому listing — основной источник; один запрос отдаёт ctx-size для всех моделей route.
 
 ## 2. Принятые решения (ответы на вопросы spec)
 
@@ -29,10 +29,19 @@ Route — **кандидат llama.cpp**, если:
   - `'openai-completions'` — базовая wire-ветка, тип выводится эвристикой.
 
 Route **подтверждается как llama.cpp**, если успешен:
-- `GET <baseURL>/props?model=<id>&autoload=false` → 200;
-- JSON содержит `default_generation_settings.n_ctx > 0`.
+- `GET <baseURL>/v1/models` → 200;
+- JSON содержит `data[]` с entries, каждый со `status.preset` (INI-конфиг).
 
-В scope: hand-declared routes-кандидаты с моделями из `models[]`. Модель обрабатывается, если у неё отсутствует (или равно 0) `contextWindow`; заполняется только для подтверждённого llama.cpp. Плагин **никогда не пишет** поле `api` в settings — тип только читается/выводится.
+**Парсинг контекста** из `status.preset` (INI, key = value по строкам):
+```
+contextWindow(entry) =
+  preset["ctx-size"]   если есть и > 0        # реальный размер промпт-контекста
+  else preset["fit-ctx"] если есть           # пол для --fit; используем как fallback
+  else unknown                                # ни ctx-size, ни fit-ctx — не выводим
+```
+`--ctx-size N` = явный размер контекста (default 0 = из модели); `--fit-ctx N` = минимальный ctx для `--fit` (пол), **не** реальный размер — но единственный доступный сигнал, если явного `ctx-size` нет. Top-level `context_window`/`context_length` у llama.cpp = `null`, не используем.
+
+В scope: hand-declared routes-кандидаты с моделями из `models[]`. Модель обрабатывается, если у неё отсутствует (или равно 0) `contextWindow`; заполняется только для подтверждённого llama.cpp (есть entry в `/v1/models` с парсируемым preset). Плагин **никогда не пишет** поле `api` в settings — тип только читается/выводится.
 
 Любой сбой (404, нет поля, таймаут, не-llama.cpp) — тихий skip + log: route остаётся незавершённым кандидатом, маршрут и сессия не ломаются.
 
@@ -62,16 +71,16 @@ roundDown(n) = n <= 1000 ? n : floor(n / 1000) * 1000
 
 | Модуль | Ответственность | Зависимости |
 |--------|-----------------|-------------|
-| `round.ts` | округление `n_ctx` | нет (чистая функция) |
-| `props.ts` | разбор/валидация ответа `/props` → `{nCtx, params?, modalities?}` | нет (чистая функция) |
-| `probe.ts` | HTTP-проб: auth, таймаут, лимит тела ≤4МБ, классификация ошибок | `Fetcher` (инжект), `props`, `round` |
-| `settings-io.ts` | тип провайдера route (кандидат/подтверждён, §3.1); чтение section `llm-pi-ai`; запись `contextWindow` per-model с fencing; создание записи модели при отсутствии | `SettingsStore` (инжект) |
-| `autofill.ts` | оркестрация: очередь, конкурренция ≤3, guard самоцикла, решение «новые модели без contextWindow» | `probe`, `settings-io` |
+| `round.ts` | округление размера контекста вниз до тысяч | нет (чистая функция) |
+| `props.ts` | разбор entry `/v1/models`: INI `status.preset` → `{ctxSize?, fitCtx?}`; правило «ctx-size else fit-ctx» (§3.1) | нет (чистая функция) |
+| `probe.ts` | HTTP: **один** GET `<baseURL>/v1/models` (листинг), лимит тела ≤4МБ, таймаут, Bearer, классификация ошибок → `{entries[]}` | `Fetcher` (инжект) |
+| `settings-io.ts` | тип провайдера route (кандидат/подтверждён, §3.1); чтение section `llm-pi-ai`; запись `contextWindow` per-model с fencing; создание записи при отсутствии | `SettingsStore` (инжект) |
+| `autofill.ts` | оркестрация: **пачкой** заполняет contextWindow моделей без него из листинга; guard самоцикла; триггеры — добавление моделей + редактирование | `probe`, `props`, `settings-io` |
 | `index.ts` | composition root плагина: `apply(ctx)` — регистрация namespace, сервиса, watcher'а; ничего не считает сам | всё выше |
 
-1. **Проб**: `probeProps(route, modelId) → {nCtx, rounded}` — один GET `/props`, лимит тела ответа (≤4МБ, паттерн discovery dsh), таймаут, Bearer из credentials.
-2. **Автоподхват (watcher)**: подписка на изменения namespace `llm-pi-ai`. Новые модели без `contextWindow` → очередь пробов (конкурренция ≤3). Guard от самоцикла: запись плагина помечается и не триггерит повторный прогон.
-3. **По запросу**: метод сервиса для client-половины — `fetchProps(route, modelId)` → preview `{nCtx, rounded}` без записи; `applyContextWindow(route, modelId)` → запись в settings.
+1. **Листинг**: `fetchModels(route) → {entries[]}` — один GET `/v1/models`, лимит тела (≤4МБ), таймаут, Bearer из credentials. Per-model `/props`-проб **отложен** (§5): листинг уже отдаёт ctx-size для всех моделей route одним запросом.
+2. **Автоподхват (пачкой)**: триггеры — (а) watcher на изменения section `llm-pi-ai` (добавление моделей), (б) редактирование модели в UI. За один листинг заполняем contextWindow для **всех** моделей route без него (`ctx-size` else `fit-ctx` → roundDown). Guard самоцикла: запись плагина не триггерит повторный прогон.
+3. **По запросу**: метод сервиса для client — `fetchModels(route)` → preview `{modelId, ctxSize, rounded}[]` без записи; `applyContextWindows(route, modelIds[])` → batch-запись в settings.
 
 ### 4.2 Web-карточка (client-половина)
 
@@ -100,7 +109,8 @@ roundDown(n) = n <= 1000 ? n : floor(n / 1000) * 1000
 
 ## 5. Не входит в v1
 
-Семплеры (температура, top_p и пр.), modalities, reasoning effort — данные из `/props` (`params`, `modalities`) проб уже читает и возвращает, использование отложено: [../model-settings/spec.md §5](../model-settings/spec.md#5-отложенные-задачи).
+- Per-model **`/props`-проб** (точечный, на загруженной модели) — отложен: листинг `/v1/models` уже отдаёт ctx-size для всех моделей route одним запросом; точечный проб нужен только если в конфиге нет ни `ctx-size`, ни `fit-ctx`.
+- Семплеры (температура, top_p и пр.), modalities, reasoning effort — данные из `/props` (`params`, `modalities`), использование отложено: [../model-settings/spec.md §5](../model-settings/spec.md#5-отложенные-задачи).
 
 ## 6. Форма проекта
 
