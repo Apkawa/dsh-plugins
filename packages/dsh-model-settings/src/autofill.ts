@@ -39,32 +39,47 @@ function contextSizesFromListing(entries: ModelEntry[]): Record<string, number> 
  * the caller, and the next round retries what was skipped.
  */
 export async function autofill(options: AutofillOptions): Promise<void> {
+  console.debug('[model-settings] autofill: round start')
   const section = options.store.read().value
   for (const [routeId, route] of Object.entries(section.providers ?? {})) {
-    if (!isCandidateRoute(route)) continue
+    if (!isCandidateRoute(route)) {
+      console.debug(`[model-settings] autofill: route "${routeId}" not a candidate (api=${route.api} baseURL=${route.baseURL}), skip`)
+      continue
+    }
     const baseURL = route.baseURL
     if (typeof baseURL !== 'string' || baseURL.length === 0) continue // isCandidateRoute already checked; belt and braces
     const models = route.models ?? []
     // Self-cycle guard: a route whose models are all sized has nothing to fetch.
-    if (models.every(hasNonzeroContextWindow)) continue
+    if (models.every(hasNonzeroContextWindow)) {
+      console.debug(`[model-settings] autofill: route "${routeId}" all ${models.length} models already sized, skip`)
+      continue
+    }
 
+    console.debug(`[model-settings] autofill: route "${routeId}" baseURL=${baseURL} models=[${models.map(m => m.id).join(', ')}]`)
     const apiKey = options.apiKeyFor?.(route)
     const fetchOptions = apiKey === undefined ? undefined : { apiKey }
+    // Throws on failure → propagates to the watcher's .catch (we log it there).
     const entries = await fetchModels(options.fetcher, baseURL, fetchOptions)
-    if (entries === null) continue // not llama.cpp / failed; skip quietly
 
+    console.debug(`[model-settings] autofill: got ${entries.length} models from listing`)
     const sizes = contextSizesFromListing(entries)
+    console.debug('[model-settings] autofill: parsed sizes:', JSON.stringify(sizes))
     for (const model of models) {
       if (hasNonzeroContextWindow(model)) continue // user override or already sized
       const raw = sizes[model.id]
-      if (raw === undefined) continue // no ctx-size / fit-ctx in the listing
+      if (raw === undefined) {
+        console.debug(`[model-settings] autofill: model "${model.id}" has no ctx-size/fit-ctx in listing, skip`)
+        continue
+      }
       const rounded = roundDown(raw)
       if (rounded === null) continue
+      console.debug(`[model-settings] autofill: filling model "${model.id}" → contextWindow=${rounded}`)
       try {
         await persistModels(options.store, routeId, model.id, rounded)
-      } catch {
-        // skip this model; the next round retries it
+      } catch (err) {
+        console.debug(`[model-settings] autofill: persist failed for "${model.id}":`, err)
       }
     }
   }
+  console.debug('[model-settings] autofill: round end')
 }

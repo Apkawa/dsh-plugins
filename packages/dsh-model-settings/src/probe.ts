@@ -18,9 +18,16 @@ const MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 /** Default listing-fetch timeout. */
 const FETCH_TIMEOUT_MS = 15_000
 
-/** Join the base with `/v1/models`, trimming a trailing slash. */
+/**
+ * Join the base with the models endpoint, trimming a trailing slash. If the base
+ * already ends with `/v1` (an OpenAI-compatible root like `http://host:8080/v1`),
+ * append only `/models`; otherwise append `/v1/models`. This handles both spellings
+ * of a llama.cpp route's baseURL without double-stamping `/v1`.
+ */
 function modelsUrl(baseURL: string): string {
-  return `${baseURL.replace(/\/+$/, '')}/v1/models`
+  const base = baseURL.replace(/\/+$/, '')
+  if (base.endsWith('/v1')) return `${base}/models`
+  return `${base}/v1/models`
 }
 
 /**
@@ -64,19 +71,21 @@ async function readBounded(response: Response): Promise<string> {
 /**
  * Fetch the `/v1/models` listing for one route. A single GET returns every model
  * with its `status.preset`; v1 parses those presets for context sizes. Every
- * failure — network error, timeout, non-2xx, oversized or malformed reply —
- * resolves to `null` so a caller can skip quietly; no exception escapes.
+ * failure — network error, timeout, non-2xx, oversized or malformed reply — throws
+ * a descriptive Error so the caller can see exactly what went wrong (the watcher's
+ * .catch logs it); no silent nulls.
  * @param fetcher - the injected fetch seam (production: global fetch).
  * @param baseURL - the route's endpoint base.
  * @param options - optional Bearer key and timeout.
- * @returns the listing entries, or `null` when the route is not a llama.cpp server.
+ * @returns the listing entries; throws on any failure.
  */
 export async function fetchModels(
   fetcher: Fetcher,
   baseURL: string,
   options?: FetchModelsOptions,
-): Promise<ModelEntry[] | null> {
+): Promise<ModelEntry[]> {
   const url = modelsUrl(baseURL)
+  console.debug(`[model-settings] fetchModels GET ${url} auth=${options?.apiKey !== undefined}`)
   const controller = new AbortController()
   const timeoutMs = options?.timeoutMs ?? FETCH_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -84,19 +93,23 @@ export async function fetchModels(
     const headers: Record<string, string> = { accept: 'application/json' }
     if (options?.apiKey !== undefined) headers.authorization = `Bearer ${options.apiKey}`
     const response = await fetcher.fetch(url, { method: 'GET', headers, signal: controller.signal })
-    if (!response.ok) return null
+    console.debug(`[model-settings] fetchModels HTTP ${response.status}`)
+    if (!response.ok) throw new Error(`fetchModels: HTTP ${response.status} from ${url}`)
     const body = await readBounded(response)
+    console.debug(`[model-settings] fetchModels body=${body.length} bytes`)
     let json: unknown
     try {
       json = JSON.parse(body)
     } catch {
-      return null
+      throw new Error(`fetchModels: malformed JSON from ${url}`)
     }
     const root = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : null
-    if (root === null || !Array.isArray(root.data)) return null
+    if (root === null || !Array.isArray(root.data)) throw new Error(`fetchModels: no data[] in reply from ${url}`)
+    console.debug(`[model-settings] fetchModels parsed ${root.data.length} models`)
     return root.data as ModelEntry[]
-  } catch {
-    return null
+  } catch (err) {
+    // Propagate with context; the caller (autofill → watcher) logs it.
+    throw err instanceof Error ? err : new Error(String(err))
   } finally {
     clearTimeout(timer)
   }

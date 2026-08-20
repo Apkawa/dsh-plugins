@@ -10,7 +10,8 @@
 вот в апи llama.cpp есть настройки модели
 пример:
 
-`GET http://192.168.1.69:8080/props?model=empero-ai_Qwen3.8-27B-Ridge-3.7bpw&autoload=false`
+`GET http://192.168.1.111:8080/props?model=gemma-3-12b-it-abliterated-q4_k_m&autoload=false`
+
 
 200 OK
 

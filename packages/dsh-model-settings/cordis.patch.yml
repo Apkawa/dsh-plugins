@@ -1,0 +1,6 @@
+# The model-settings bundle patch: mounts the plugin row into any profile that
+# installs this package. The host half auto-captures llama.cpp context windows
+# from the /v1/models listing; the client half renders the settings card.
+- insert:
+    - id: model-settings
+      name: '@apkawa/dsh-model-settings'

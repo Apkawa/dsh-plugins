@@ -13,6 +13,13 @@ import { ModelSettingsCard } from './card.tsx'
 /** The settings namespace this plugin owns; the card's slot key. */
 const NS = 'model-settings'
 
+/**
+ * The card is disabled while the host autofill is the only contextWindow writer:
+ * it fills the provider's models in settings, and the existing Models UI displays
+ * them. Flip to true to re-enable the manual-trigger card (kept verbatim below).
+ */
+const CLIENT_ENABLED = false
+
 /** Required services (cordis fiber inject). */
 export const inject = ['slots', 'connection']
 
@@ -21,6 +28,7 @@ export const inject = ['slots', 'connection']
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
+  if (!CLIENT_ENABLED) return
   const connection = ctx.get('connection') as ConnectionHandle
   const controller = new ModelSettingsCardController(connection)
   // Populate on mount; the card surfaces a Retry control if this fails early.

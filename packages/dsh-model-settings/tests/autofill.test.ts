@@ -92,10 +92,10 @@ describe('autofill', () => {
     expect(store.writeCount).toBe(writesAfterFirst) // no new writes
   })
 
-  it('skips a failing listing without leaking an exception', async () => {
+  it('lets a failing listing throw (visible error for debugging; suppressed at watcher level)', async () => {
     const store = new FakeStore(sectionWith('r', 'openai-completions', 'http://h', ['m1']))
     const fetcher = new FakeListingFetcher([entry('m1', 120064)], true) // network error
-    await expect(autofill({ store, fetcher })).resolves.toBeUndefined()
+    await expect(autofill({ store, fetcher })).rejects.toThrow()
     expect(store.writeCount).toBe(0)
     expect(store.section.providers?.['r']?.models).toEqual([{ id: 'm1' }])
   })

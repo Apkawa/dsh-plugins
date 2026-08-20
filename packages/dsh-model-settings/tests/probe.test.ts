@@ -38,27 +38,27 @@ describe('fetchModels', () => {
     expect(captured).toBe('http://host:8080/v1/models')
   })
 
-  it('returns null on a 404 (skip, no exception)', async () => {
+  it('throws on a 404 (visible error, not silent null)', async () => {
     const fetcher: Fetcher = { fetch: async () => new Response('', { status: 404 }) }
-    await expect(fetchModels(fetcher, 'http://host:8080')).resolves.toBeNull()
+    await expect(fetchModels(fetcher, 'http://host:8080')).rejects.toThrow(/HTTP 404/)
   })
 
-  it('returns null on a non-2xx status (skip)', async () => {
+  it('throws on a non-2xx status (visible error)', async () => {
     const fetcher: Fetcher = { fetch: async () => new Response('nope', { status: 500 }) }
-    await expect(fetchModels(fetcher, 'http://host:8080')).resolves.toBeNull()
+    await expect(fetchModels(fetcher, 'http://host:8080')).rejects.toThrow(/HTTP 500/)
   })
 
-  it('returns null when the reply is not JSON (skip)', async () => {
+  it('throws when the reply is not JSON (visible error)', async () => {
     const fetcher: Fetcher = { fetch: async () => new Response('<html>', { status: 200 }) }
-    await expect(fetchModels(fetcher, 'http://host:8080')).resolves.toBeNull()
+    await expect(fetchModels(fetcher, 'http://host:8080')).rejects.toThrow(/malformed JSON/)
   })
 
-  it('returns null when the reply has no data array (skip)', async () => {
+  it('throws when the reply has no data array (visible error)', async () => {
     const fetcher: Fetcher = { fetch: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }) }
-    await expect(fetchModels(fetcher, 'http://host:8080')).resolves.toBeNull()
+    await expect(fetchModels(fetcher, 'http://host:8080')).rejects.toThrow(/no data\[\]/)
   })
 
-  it('returns null on timeout (aborted signal) without leaking an exception', async () => {
+  it('throws on timeout (aborted signal)', async () => {
     const fetcher: Fetcher = {
       fetch: (_url, init) =>
         new Promise((_resolve, reject) => {
@@ -66,13 +66,13 @@ describe('fetchModels', () => {
           signal?.addEventListener('abort', () => reject(new Error('aborted')))
         }),
     }
-    await expect(fetchModels(fetcher, 'http://host:8080', { timeoutMs: 20 })).resolves.toBeNull()
+    await expect(fetchModels(fetcher, 'http://host:8080', { timeoutMs: 20 })).rejects.toThrow()
   })
 
-  it('returns null when the body exceeds the 4MB ceiling (skip)', async () => {
+  it('throws when the body exceeds the 4MB ceiling', async () => {
     const oversized = 'a'.repeat(4 * 1024 * 1024 + 1)
     const fetcher: Fetcher = { fetch: async () => new Response(oversized, { status: 200 }) }
-    await expect(fetchModels(fetcher, 'http://host:8080')).resolves.toBeNull()
+    await expect(fetchModels(fetcher, 'http://host:8080')).rejects.toThrow(/exceeds the byte ceiling/)
   })
 
   it('sends a Bearer header when an api key is supplied', async () => {
@@ -85,5 +85,20 @@ describe('fetchModels', () => {
     }
     await fetchModels(fetcher, 'http://host:8080', { apiKey: 'secret' })
     expect(auth).toBe('Bearer secret')
+  })
+
+  // ─── LIVE test (temporary debugging) ────────────────────────────────────────
+  // Hits the real llama.cpp server to verify fetchModels works against reality.
+  // Skipped by default; flip `.skip` → `it` to run it manually.
+  it.skip('LIVE: fetches models from 192.168.1.69 (debugging)', async () => {
+    const entries = await fetchModels(
+      { fetch: (input, init) => globalThis.fetch(input, init) },
+      'http://192.168.1.69:8080/v1',
+    )
+    console.debug('LIVE /v1/models →', entries.length, 'models')
+    for (const e of entries.slice(0, 5)) {
+      console.debug('  ', e.id, '| preset:', e.status?.preset?.slice(0, 80))
+    }
+    expect(entries.length).toBeGreaterThan(0)
   })
 })

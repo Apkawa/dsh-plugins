@@ -149,10 +149,12 @@ export function apply(ctx: Context): void {
     // schedules another round; the flag only dedupes concurrent commits.
     let running = false
     ctx.on('settings/updated', (ns) => {
+      console.debug(`[model-settings] settings/updated fired: ns=${ns} isLlmNs=${ns === LLM_NS} running=${running}`)
       if (ns !== LLM_NS || running) return
       running = true
       void autofill({ store, fetcher: productionFetcher, apiKeyFor })
         .catch(error => {
+          console.debug('[model-settings] autofill round FAILED:', error)
           ctx.logger.error('model-settings: autofill round failed')
           ctx.logger.error(error)
         })
