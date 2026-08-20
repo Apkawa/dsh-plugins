@@ -24,6 +24,13 @@
 
 5. **Make failures LOUD during development**: a quiet-skip design (`fetchModels` → `null` on any failure) hid the 404 for hours. During dev/debugging, throw + log so the error is immediately visible in the console. Restore quiet-skip (catch + skip) only once the happy path is confirmed working.
 
+## Commits
+
+* **Conventional Commits**: `type(scope): summary` (`feat`, `fix`, `docs`, …; scope optional) — match the existing history (`git log --oneline`).
+* **When to commit**: multi-stage work → a commit at the end of each stage (checkpoint). Small work → commit right after completion; follow-up tweaks from later remarks go into a SEPARATE commit, only after confirming all issues are resolved. No `--amend` — fixes get their own commit.
+* **Branches**: owned by the user — do not create, switch, or delete branches autonomously.
+* **No pushing**: never run `git push` (any form); commits stay local until the user pushes them himself.
+
 ## Notes
 
 * У меня интернет может шалить, если не получается что то загрузить, останавливайся и пиши команду которую хотел выполнить, я подопну.
