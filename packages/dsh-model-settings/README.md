@@ -20,6 +20,11 @@ the plugin fetches the provider's `/v1/models` listing, reads each model's INI p
 dsh plugin --profile web add github:apkawa/dsh-plugins#path:/packages/dsh-model-settings
 ```
 
+## Debugging
+
+Logs are quiet by default. Run dsh with `DEBUG=1` to see the plugin's trace output
+(`fetchModels`, autofill rounds); error lines are always printed regardless of the flag.
+
 ## Development
 
 See [AGENTS.md](../../AGENTS.md) for principles + pitfalls, and

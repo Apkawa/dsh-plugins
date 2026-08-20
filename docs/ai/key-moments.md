@@ -100,6 +100,16 @@ its display. Verify exact signatures in `packages/settings/settings/src/types.ts
 
 ## 6. Module budget (KISS cap)
 
-Six host modules: `round.ts`, `props.ts`, `probe.ts`, `settings-io.ts`, `autofill.ts`,
-`index.ts`. The client half is disabled but kept (`client/{card,controller,index,slot-contract}.tsx`).
+Seven host modules: `round.ts`, `props.ts`, `probe.ts`, `settings-io.ts`, `autofill.ts`,
+`log.ts`, `index.ts`. The client half is disabled but kept (`client/{card,controller,index,slot-contract}.tsx`).
 If adding new capabilities, prefer a new consumer/module over rewriting the core.
+
+## 7. Logging (dbg wrapper)
+
+All plugin logs go through `src/log.ts` → `dbg.{log,info,warn,debug,error}`; the
+`[model-settings]` tag lives inside `dbg`, not at call sites. Every level except
+`error` is gated on `process.env.DEBUG === '1'` (exact value, no namespace globs);
+`error` is never gated — failures stay loud (AGENTS.md pitfall 5). dsh has no product-level
+log-level flag to piggyback on (`DSH_TELEMETRY_MODE` is OTLP-only; the dynamic-package vm
+sandbox console is unconditional write-through), so the flag is ours. Planned: extract
+`log.ts` into a shared package for other plugins later — until then it stays local.

@@ -11,6 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { autofill } from './autofill.ts'
+import { dbg } from './log.ts'
 import { fetchModels, type Fetcher } from './probe.ts'
 import { contextWindowFromEntry } from './props.ts'
 import { isCandidateRoute, persistModels, type LlmModelEntry, type LlmRouteProfile, type LlmSection, type SettingsStore } from './settings-io.ts'
@@ -149,12 +150,12 @@ export function apply(ctx: Context): void {
     // schedules another round; the flag only dedupes concurrent commits.
     let running = false
     ctx.on('settings/updated', (ns) => {
-      console.debug(`[model-settings] settings/updated fired: ns=${ns} isLlmNs=${ns === LLM_NS} running=${running}`)
+      dbg.debug(`settings/updated fired: ns=${ns} isLlmNs=${ns === LLM_NS} running=${running}`)
       if (ns !== LLM_NS || running) return
       running = true
       void autofill({ store, fetcher: productionFetcher, apiKeyFor })
         .catch(error => {
-          console.debug('[model-settings] autofill round FAILED:', error)
+          dbg.error('autofill round FAILED:', error)
           ctx.logger.error('model-settings: autofill round failed')
           ctx.logger.error(error)
         })

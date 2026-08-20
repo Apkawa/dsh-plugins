@@ -1,3 +1,4 @@
+import { dbg } from './log.ts'
 import type { ModelEntry } from './props.ts'
 
 /** A minimal fetch seam so the listing fetch is testable without touching the network. */
@@ -85,7 +86,7 @@ export async function fetchModels(
   options?: FetchModelsOptions,
 ): Promise<ModelEntry[]> {
   const url = modelsUrl(baseURL)
-  console.debug(`[model-settings] fetchModels GET ${url} auth=${options?.apiKey !== undefined}`)
+  dbg.debug(`fetchModels GET ${url} auth=${options?.apiKey !== undefined}`)
   const controller = new AbortController()
   const timeoutMs = options?.timeoutMs ?? FETCH_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -93,10 +94,10 @@ export async function fetchModels(
     const headers: Record<string, string> = { accept: 'application/json' }
     if (options?.apiKey !== undefined) headers.authorization = `Bearer ${options.apiKey}`
     const response = await fetcher.fetch(url, { method: 'GET', headers, signal: controller.signal })
-    console.debug(`[model-settings] fetchModels HTTP ${response.status}`)
+    dbg.debug(`fetchModels HTTP ${response.status}`)
     if (!response.ok) throw new Error(`fetchModels: HTTP ${response.status} from ${url}`)
     const body = await readBounded(response)
-    console.debug(`[model-settings] fetchModels body=${body.length} bytes`)
+    dbg.debug(`fetchModels body=${body.length} bytes`)
     let json: unknown
     try {
       json = JSON.parse(body)
@@ -105,7 +106,7 @@ export async function fetchModels(
     }
     const root = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : null
     if (root === null || !Array.isArray(root.data)) throw new Error(`fetchModels: no data[] in reply from ${url}`)
-    console.debug(`[model-settings] fetchModels parsed ${root.data.length} models`)
+    dbg.debug(`fetchModels parsed ${root.data.length} models`)
     return root.data as ModelEntry[]
   } catch (err) {
     // Propagate with context; the caller (autofill → watcher) logs it.
