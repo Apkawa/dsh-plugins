@@ -11,7 +11,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { autofill } from './autofill.ts'
-import { probeProps, type Fetcher } from './probe.ts'
+import { fetchModels, type Fetcher } from './probe.ts'
+import { contextWindowFromEntry } from './props.ts'
 import { isCandidateRoute, persistModels, type LlmModelEntry, type LlmRouteProfile, type LlmSection, type SettingsStore } from './settings-io.ts'
 
 export const name = 'model-settings'
@@ -102,22 +103,27 @@ function makeRpcHandler(store: SettingsStore): (endpoint: string, payload: unkno
       switch (endpoint) {
         case 'listModels':
           return { ok: true, value: listModelRows(store) }
-        case 'fetchProps': {
-          const p = payload as { routeId?: string; modelId?: string }
-          if (p?.routeId === undefined || p.modelId === undefined) throw new Error('fetchProps requires routeId and modelId')
+        case 'fetchModels': {
+          const p = payload as { routeId?: string }
+          if (p?.routeId === undefined) throw new Error('fetchModels requires routeId')
           const route = resolveRoute(store, p.routeId)
           const baseURL = route.baseURL
           if (typeof baseURL !== 'string' || baseURL.length === 0) throw new Error(`route "${p.routeId}" has no baseURL`)
           const apiKey = apiKeyFor(route)
-          const probeOptions = apiKey === undefined ? undefined : { apiKey }
-          const result = await probeProps(productionFetcher, baseURL, p.modelId, probeOptions)
-          if (result === null) throw new Error('the endpoint did not confirm a llama.cpp context size')
-          return { ok: true, value: { nCtx: result.nCtx, rounded: result.rounded } }
+          const fetchOptions = apiKey === undefined ? undefined : { apiKey }
+          const entries = await fetchModels(productionFetcher, baseURL, fetchOptions)
+          if (entries === null) throw new Error('the endpoint did not return a llama.cpp model listing')
+          // expose each entry's computed context size so the card can show what would be filled
+          const models = entries.map(e => ({ id: e.id ?? null, contextWindow: contextWindowFromEntry(e) }))
+          return { ok: true, value: { models } }
         }
-        case 'applyContextWindow': {
-          const p = payload as { routeId?: string; modelId?: string; rounded?: number }
-          if (p?.routeId === undefined || p.modelId === undefined || typeof p.rounded !== 'number') throw new Error('applyContextWindow requires routeId, modelId, and rounded')
-          await persistModels(store, p.routeId, p.modelId, p.rounded)
+        case 'applyContextWindows': {
+          const p = payload as { routeId?: string; windows?: Array<{ modelId: string; rounded: number }> }
+          if (p?.routeId === undefined || !Array.isArray(p.windows)) throw new Error('applyContextWindows requires routeId and windows')
+          for (const w of p.windows) {
+            if (typeof w.modelId !== 'string' || typeof w.rounded !== 'number') throw new Error('each window needs a modelId and rounded size')
+            await persistModels(store, p.routeId, w.modelId, w.rounded)
+          }
           return { ok: true, value: null }
         }
         default:

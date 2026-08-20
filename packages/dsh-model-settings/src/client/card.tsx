@@ -1,18 +1,43 @@
 /**
- * The model-settings card: a list of the OpenAI-compatible routes' models, each
- * showing its current contextWindow and a «Fetch props» control. Fetching probes
- * the model's /props on the Host (rounded-down n_ctx preview); Apply writes it.
+ * The model-settings card: a list of the OpenAI-compatible routes, each showing
+ * its models with their current contextWindow and a «Fetch models» control. Fetching
+ * lists the route's `/v1/models` on the Host (each entry's `ctx-size`/`fit-ctx`
+ * parsed to a size); Apply writes the sizes for the still-unsized models in one
+ * batch. The autofill watcher already does this on model add/edit; the card is the
+ * manual path.
  *
- * The component is deliberately dumb — every value comes from the injected
- * snapshot store and every action delegates to the controller face, so this file
- * holds no settings or fetch logic of its own.
+ * The component is deliberately dumb — every value comes from the injected snapshot
+ * store and every action delegates to the controller face, so this file holds no
+ * settings or fetch logic of its own.
  */
 
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
-import type { FetchPreview, ModelRow, ModelSettingsCardFace } from './controller.ts'
+import type { ModelRow, ModelSettingsCardFace, RouteListing } from './controller.ts'
 
 /** The composed props the slot dispatcher hands the card. */
 type CardProps = InjectFace<ModelSettingsCardFace>
+
+/** A route's models grouped for display. */
+interface RouteGroup {
+  routeId: string
+  models: readonly ModelRow[]
+}
+
+/** Group the flat model rows by their route, preserving first-seen order. */
+function groupByRoute(models: readonly ModelRow[]): RouteGroup[] {
+  const order: string[] = []
+  const byRoute = new Map<string, ModelRow[]>()
+  for (const model of models) {
+    const bucket = byRoute.get(model.routeId)
+    if (bucket === undefined) {
+      order.push(model.routeId)
+      byRoute.set(model.routeId, [model])
+    } else {
+      bucket.push(model)
+    }
+  }
+  return order.map(routeId => ({ routeId, models: byRoute.get(routeId)! }))
+}
 
 export function ModelSettingsCard(props: CardProps) {
   const state = props.useModelSettingsCard(snapshot => snapshot)
@@ -32,51 +57,68 @@ export function ModelSettingsCard(props: CardProps) {
 
   return (
     <ul>
-      {state.models.map(model => (
-        <li key={`${model.routeId}:${model.modelId}`}>
-          <ModelRowBody model={model} preview={state.previews[model.modelId]} props={props} />
+      {groupByRoute(state.models).map(group => (
+        <li key={group.routeId}>
+          <RouteRow routeId={group.routeId} models={group.models} listing={state.listings[group.routeId]} props={props} />
         </li>
       ))}
     </ul>
   )
 }
 
-/** One row: the model id, its current contextWindow, and the fetch/apply control. */
-function ModelRowBody({
-  model,
-  preview,
+/** One route: its models, a «Fetch models» control, and a batch Apply. */
+function RouteRow({
+  routeId,
+  models,
+  listing,
   props,
 }: {
-  model: ModelRow
-  preview: FetchPreview | undefined
+  routeId: string
+  models: readonly ModelRow[]
+  listing: RouteListing | undefined
   props: CardProps
 }) {
-  const applying = preview?.status === 'applying'
+  // The models that would be written: a fetched size present but no contextWindow yet.
+  const pending: Array<{ modelId: string; rounded: number }> = []
+  if (listing?.sizes !== undefined) {
+    for (const m of models) {
+      const size = listing.sizes[m.modelId]
+      if (size !== undefined && m.contextWindow === undefined) pending.push({ modelId: m.modelId, rounded: size })
+    }
+  }
 
   return (
     <div>
-      <span>{model.modelId}</span>{' '}
-      <span>ctx: {model.contextWindow ?? '—'}</span>{' '}
-      {preview?.status === 'fetching' && <span>Fetching…</span>}
-      {preview?.status === 'error' && (
-        <span role="alert">{preview.error ?? 'Fetch failed.'}</span>
+      <strong>{routeId}</strong>
+      <ul>
+        {models.map(model => (
+          <li key={model.modelId}>
+            <span>{model.modelId}</span>{' '}
+            <span>ctx: {model.contextWindow ?? '—'}</span>
+          </li>
+        ))}
+      </ul>
+
+      {listing?.status === 'fetching' && <span>Fetching models…</span>}
+      {listing?.status === 'error' && (
+        <span role="alert">{listing.error ?? 'Fetch failed.'}</span>
       )}
-      {(preview?.status === 'preview' || applying) && preview.rounded !== undefined && (
+      {listing?.status !== 'fetching' && listing?.status !== 'applying' && (
+        <button type="button" onClick={() => props.fetchModels(routeId)}>
+          Fetch models
+        </button>
+      )}
+      {pending.length > 0 && (
         <>
-          <span>n_ctx={preview.nCtx} → {preview.rounded}</span>{' '}
+          <span>{pending.length} to fill</span>{' '}
           <button
             type="button"
-            disabled={applying}
-            onClick={() => props.applyContextWindow(model.routeId, model.modelId, preview.rounded ?? 0)}
+            disabled={listing?.status === 'applying'}
+            onClick={() => props.applyContextWindows(routeId, pending)}
           >
-            Apply
+            {listing?.status === 'applying' ? 'Applying…' : 'Apply'}
           </button>
         </>
-      )}
-      {preview?.status !== 'fetching' && (
-        <button type="button" onClick={() => props.fetchProps(model.routeId, model.modelId)}>
-          Fetch props
-        </button>
       )}
     </div>
   )

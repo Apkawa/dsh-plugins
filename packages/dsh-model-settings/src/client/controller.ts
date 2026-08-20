@@ -4,10 +4,11 @@
  * generic RPC channel. The card component only renders this store and calls
  * the face's actions — it never touches settings or fetch itself.
  *
- * The Host half (stage 5) registers the `/model-settings` channel with three
- * endpoints: `listModels`, `fetchProps`, `applyContextWindow`. The channel name
- * is spelled here rather than imported: a client package must not depend on a
- * Host package (client bundle purity).
+ * The Host half registers the `/model-settings` channel with three endpoints:
+ * `listModels`, `fetchModels` (one `/v1/models` listing per route), and
+ * `applyContextWindows` (a batch write for a route). The channel name is spelled
+ * here rather than imported: a client package must not depend on a Host package
+ * (client bundle purity).
  */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
@@ -26,13 +27,11 @@ export interface ModelRow {
 /** Card-level load phase. */
 export type CardPhase = 'loading' | 'ready' | 'error'
 
-/** Per-model fetch/apply progress for the «Fetch props» control. */
-export interface FetchPreview {
+/** Per-route listing progress for the «Fetch models» control. */
+export interface RouteListing {
   status: 'fetching' | 'preview' | 'applying' | 'error'
-  /** The raw n_ctx reported by /props (informational). */
-  nCtx?: number
-  /** The rounded-down value that would be written on Apply. */
-  rounded?: number
+  /** The context sizes fetched from `/v1/models`, keyed by model id. */
+  sizes?: Record<string, number>
   error?: string
 }
 
@@ -41,8 +40,8 @@ export interface ModelSettingsCardState {
   phase: CardPhase
   error?: string
   models: readonly ModelRow[]
-  /** Fetch/apply progress keyed by model id. */
-  previews: Record<string, FetchPreview>
+  /** Listing fetch progress keyed by route id. */
+  listings: Record<string, RouteListing>
 }
 
 /** The registration-side face the card's slot entry injects. */
@@ -53,10 +52,10 @@ export interface ModelSettingsCardFace {
   }
   /** (Re)load the candidate model list from the Host. */
   loadModels(): void
-  /** Probe one model's /props and surface a rounded preview for Apply. */
-  fetchProps(routeId: string, modelId: string): Promise<void>
-  /** Write the rounded contextWindow into llm-pi-ai for one model. */
-  applyContextWindow(routeId: string, modelId: string, rounded: number): Promise<void>
+  /** Fetch a route's `/v1/models` listing and surface per-model sizes for Apply. */
+  fetchModels(routeId: string): Promise<void>
+  /** Write the fetched contextWindows into llm-pi-ai for a route in one batch. */
+  applyContextWindows(routeId: string, windows: Array<{ modelId: string; rounded: number }>): Promise<void>
 }
 
 /** The logical RPC channel this plugin owns on the connection transport. */
@@ -74,7 +73,7 @@ export class ModelSettingsCardController {
   readonly store: SnapshotStore<ModelSettingsCardState>
 
   constructor(private readonly connection: ConnectionHandle) {
-    this.store = createSnapshotStore({ phase: 'loading', models: [], previews: {} })
+    this.store = createSnapshotStore({ phase: 'loading', models: [], listings: {} })
   }
 
   /** The face object the slot registration injects into the card. */
@@ -82,15 +81,14 @@ export class ModelSettingsCardController {
     return {
       hooks: { modelSettingsCard: this.store },
       loadModels: () => { void this.loadModels() },
-      fetchProps: (routeId, modelId) => this.fetchProps(routeId, modelId),
-      applyContextWindow: (routeId, modelId, rounded) =>
-        this.applyContextWindow(routeId, modelId, rounded),
+      fetchModels: (routeId) => this.fetchModels(routeId),
+      applyContextWindows: (routeId, windows) => this.applyContextWindows(routeId, windows),
     }
   }
 
-  private setPreview(modelId: string, preview: FetchPreview): void {
+  private setListing(routeId: string, listing: RouteListing): void {
     this.store.update(draft => {
-      draft.previews = { ...draft.previews, [modelId]: preview }
+      draft.listings = { ...draft.listings, [routeId]: listing }
     })
   }
 
@@ -114,33 +112,33 @@ export class ModelSettingsCardController {
     }
   }
 
-  async fetchProps(routeId: string, modelId: string): Promise<void> {
-    this.setPreview(modelId, { status: 'fetching' })
+  async fetchModels(routeId: string): Promise<void> {
+    this.setListing(routeId, { status: 'fetching' })
     try {
-      const preview = await this.call<{ nCtx: number; rounded: number }>('fetchProps', {
-        routeId,
-        modelId,
-      })
-      this.setPreview(modelId, {
-        status: 'preview',
-        nCtx: preview.nCtx,
-        rounded: preview.rounded,
-      })
+      const result = await this.call<{ models: Array<{ id: string | null; contextWindow: number | null }> }>(
+        'fetchModels',
+        { routeId },
+      )
+      const sizes: Record<string, number> = {}
+      for (const model of result.models) {
+        if (model.id !== null && model.contextWindow !== null) sizes[model.id] = model.contextWindow
+      }
+      this.setListing(routeId, { status: 'preview', sizes })
     } catch (error) {
-      this.setPreview(modelId, { status: 'error', error: messageOf(error) })
+      this.setListing(routeId, { status: 'error', error: messageOf(error) })
     }
   }
 
-  async applyContextWindow(routeId: string, modelId: string, rounded: number): Promise<void> {
-    const existing = this.store.getSnapshot().previews[modelId]
-    if (existing === undefined || existing.rounded === undefined) return
-    this.setPreview(modelId, { ...existing, status: 'applying' })
+  async applyContextWindows(routeId: string, windows: Array<{ modelId: string; rounded: number }>): Promise<void> {
+    const existing = this.store.getSnapshot().listings[routeId]
+    if (existing === undefined) return
+    this.setListing(routeId, { ...existing, status: 'applying' })
     try {
-      await this.call('applyContextWindow', { routeId, modelId, rounded })
+      await this.call('applyContextWindows', { routeId, windows })
       // The list's contextWindow changes on the Host; refresh it.
       await this.loadModels()
     } catch (error) {
-      this.setPreview(modelId, { ...existing, status: 'error', error: messageOf(error) })
+      this.setListing(routeId, { ...existing, status: 'error', error: messageOf(error) })
     }
   }
 
