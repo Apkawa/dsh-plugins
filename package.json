@@ -1,0 +1,13 @@
+{
+  "name": "dsh-model-settings-workspace",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @apkawa/dsh-model-settings build",
+    "test": "pnpm --filter @apkawa/dsh-model-settings test",
+    "typecheck": "pnpm --filter @apkawa/dsh-model-settings typecheck"
+  }
+}

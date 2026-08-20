@@ -1,0 +1,6 @@
+# Model-settings plugin row — mounts @apkawa/dsh-model-settings into a dsh deployment.
+# `name` resolves as a bare module from the deployment's node_modules, so the
+# package must be installed there (stage 5 wires this up for real).
+- insert:
+    - id: model-settings
+      name: '@apkawa/dsh-model-settings'

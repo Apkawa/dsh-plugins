@@ -1,1 +1,6 @@
 dsh
+node_modules
+lib
+*.tsbuildinfo
+dist
+
