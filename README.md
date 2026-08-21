@@ -7,7 +7,7 @@ Each plugin lives under `packages/<name>/` and has its own README.
 
 | Package | What it does |
 |---------|--------------|
-| [`dsh-model-settings`](./packages/dsh-model-settings/) | Auto-fills `contextWindow` for llama.cpp models from their `/v1/models` INI presets. |
+| [`dsh-model-settings`](./packages/dsh-model-settings/) | Per-model reasoning effort + context window management (autofill from `/v1/models` INI presets). |
 
 ## Install
 

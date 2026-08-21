@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   isCandidateRoute,
   planContextWindowWrite,
+  planContextWindowOverwrite,
   persistModels,
+  persistContextWindow,
   type SettingsStore,
   type LlmModelEntry,
   type LlmSection,
@@ -147,6 +149,92 @@ describe('persistModels (fenced write + single retry)', () => {
     store.forceError = err
     await expect(persistModels(store, 'myroute', 'm2', 8000)).rejects.toBe(err)
     // a non-conflict is not retried: exactly one attempt was made
+    expect(store.writeCount).toBe(0)
+  })
+})
+
+describe('planContextWindowOverwrite (explicit replace)', () => {
+  it('creates a model entry when absent, appending at the end', () => {
+    const res = planContextWindowOverwrite([{ id: 'A' }], 'B', 120000)
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'A' }, { id: 'B', contextWindow: 120000 }])
+  })
+  it('overwrites an existing positive contextWindow (the caller asked for a replace)', () => {
+    const res = planContextWindowOverwrite([{ id: 'A', contextWindow: 50000 }], 'A', 120000)
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'A', contextWindow: 120000 }])
+  })
+  it('is a no-op when the stored value already matches', () => {
+    const res = planContextWindowOverwrite([{ id: 'A', contextWindow: 8000 }], 'A', 8000)
+    expect(res.changed).toBe(false)
+    expect(res.models).toEqual([{ id: 'A', contextWindow: 8000 }])
+  })
+  it('fills an entry that has no contextWindow yet and preserves sibling fields', () => {
+    const res = planContextWindowOverwrite([{ id: 'X', name: 'x' }, { id: 'Y' }], 'Y', 100)
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'X', name: 'x' }, { id: 'Y', contextWindow: 100 }])
+  })
+})
+
+describe('persistContextWindow (fenced overwrite write + single retry)', () => {
+  const section = (): LlmSection => ({
+    providers: {
+      myroute: { api: 'openai-completions', baseURL: 'http://h', models: [{ id: 'm1' }] },
+    },
+  })
+
+  it('writes contextWindow for an absent model entry on a clean revision', async () => {
+    const store = new FakeStore(section())
+    await persistContextWindow(store, 'myroute', 'm2', 120000)
+    expect(store.writeCount).toBe(1)
+    expect(store.section.providers?.['myroute']?.models).toEqual([{ id: 'm1' }, { id: 'm2', contextWindow: 120000 }])
+  })
+
+  it('replaces an existing different value (explicit overwrite)', async () => {
+    const s = section()
+    s.providers!.myroute!.models![0] = { id: 'm1', contextWindow: 50000 }
+    const store = new FakeStore(s)
+    await persistContextWindow(store, 'myroute', 'm1', 120000)
+    expect(store.writeCount).toBe(1)
+    expect(store.section.providers?.['myroute']?.models).toEqual([{ id: 'm1', contextWindow: 120000 }])
+  })
+
+  it('does not write when the stored value already matches', async () => {
+    const s = section()
+    s.providers!.myroute!.models![0] = { id: 'm1', contextWindow: 8000 }
+    const store = new FakeStore(s)
+    await persistContextWindow(store, 'myroute', 'm1', 8000)
+    expect(store.writeCount).toBe(0) // no-op: value already correct
+    expect(store.section.providers?.['myroute']?.models).toEqual([{ id: 'm1', contextWindow: 8000 }])
+  })
+
+  it('skips quietly when the route is not in the section', async () => {
+    const store = new FakeStore(section())
+    await persistContextWindow(store, 'ghost-route', 'm1', 120000)
+    expect(store.writeCount).toBe(0)
+  })
+
+  it('re-reads and retries once after a single conflict', async () => {
+    const store = new FakeStore(section())
+    store.conflictsLeft = 1 // first write conflicts, second succeeds
+    await persistContextWindow(store, 'myroute', 'm2', 8000)
+    expect(store.writeCount).toBe(1)
+    expect(store.section.providers?.['myroute']?.models).toEqual([{ id: 'm1' }, { id: 'm2', contextWindow: 8000 }])
+  })
+
+  it('propagates the error when two consecutive conflicts occur', async () => {
+    const store = new FakeStore(section())
+    store.conflictsLeft = 2 // both attempts conflict
+    await expect(persistContextWindow(store, 'myroute', 'm2', 8000)).rejects.toMatchObject({ code: 'SETTINGS_CONFLICT' })
+    expect(store.writeCount).toBe(0)
+  })
+
+  it('does not retry a non-conflict error (e.g. schema rejection)', async () => {
+    const store = new FakeStore(section())
+    const err = new Error('settings-rejected')
+    ;(err as { code?: string }).code = 'SETTINGS_REJECTED'
+    store.forceError = err
+    await expect(persistContextWindow(store, 'myroute', 'm2', 8000)).rejects.toBe(err)
     expect(store.writeCount).toBe(0)
   })
 })

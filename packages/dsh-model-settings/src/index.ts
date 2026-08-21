@@ -14,7 +14,10 @@ import { autofill } from './autofill.ts'
 import { dbg } from './log.ts'
 import { fetchModels, type Fetcher } from './probe.ts'
 import { contextWindowFromEntry } from './props.ts'
-import { isCandidateRoute, persistModels, type LlmModelEntry, type LlmRouteProfile, type LlmSection, type SettingsStore } from './settings-io.ts'
+import { isCandidateRoute, persistContextWindow, persistModels, type LlmModelEntry, type LlmRouteProfile, type LlmSection, type SettingsStore } from './settings-io.ts'
+import { validateEfforts, type ReasoningEfforts } from './efforts.ts'
+import { persistModelSave, type ModelSaveParts } from './model-save.ts'
+import { roundDown } from './round.ts'
 
 export const name = 'model-settings'
 
@@ -29,8 +32,17 @@ const CHANNEL = '/model-settings'
 const ModelSettingsSchema = z.object({}) as z<Record<string, never>>
 const EMPTY_CONFIG: Record<string, never> = {}
 
-/** The one RPC result shape the client unwraps. */
-type RpcResult = { ok: true; value: unknown } | { ok: false; error: { message: string; code?: string } }
+/**
+ * The one RPC result shape the client unwraps. Errors follow the dsh carrier's
+ * closed-code contract (code + message + required details): a non-conformant
+ * result fails the carrier's validation and reaches the client as raw zod issues.
+ */
+type RpcResult = { ok: true; value: unknown } | { ok: false; error: { code: string; message: string; details: Record<string, unknown> } }
+
+/** Build an RPC error in the shape the dsh carrier validates (mirrors its `transportError` catch-all). */
+function rpcFailure(code: 'bad-request' | 'internal', message: string, details: Record<string, unknown>): RpcResult {
+  return { ok: false, error: { code, message, details } }
+}
 
 /** The connection transport's host RPC registry, as this plugin consumes it. */
 interface ConnectionRpcHandle {
@@ -89,6 +101,22 @@ function listModelRows(store: SettingsStore): Array<{ routeId: string; modelId: 
   return rows
 }
 
+/** The rows the v2 settings section lists: every candidate route's models with their current reasoningEfforts and contextWindow. */
+function listReasoningRows(store: SettingsStore): Array<{ routeId: string; modelId: string; contextWindow?: number; efforts?: ReasoningEfforts }> {
+  const section = store.read().value
+  const rows: Array<{ routeId: string; modelId: string; contextWindow?: number; efforts?: ReasoningEfforts }> = []
+  for (const [routeId, route] of Object.entries(section.providers ?? {})) {
+    if (!isCandidateRoute(route)) continue
+    for (const model of route.models ?? []) {
+      // `false` is dsh's explicit non-reasoning spelling (our clear); only a mapping object is shown as levels.
+      const raw = model.reasoningEfforts
+      const efforts = typeof raw === 'object' && raw !== null ? (raw as ReasoningEfforts) : undefined
+      rows.push({ routeId, modelId: model.id, ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}), ...(efforts !== undefined ? { efforts } : {}) })
+    }
+  }
+  return rows
+}
+
 /** Resolve one route's probe inputs from the section; a missing route or base throws. */
 function resolveRoute(store: SettingsStore, routeId: string): LlmRouteProfile {
   const section = store.read().value
@@ -97,8 +125,8 @@ function resolveRoute(store: SettingsStore, routeId: string): LlmRouteProfile {
   return route
 }
 
-/** The RPC handler for the `/model-settings` channel; every failure becomes an `ok:false` result. */
-function makeRpcHandler(store: SettingsStore): (endpoint: string, payload: unknown) => Promise<RpcResult> {
+/** The RPC handler for the `/model-settings` channel; every failure becomes an `ok:false` result. Exported so its endpoints are unit-testable. */
+export function makeRpcHandler(store: SettingsStore, fetcher: Fetcher = productionFetcher): (endpoint: string, payload: unknown) => Promise<RpcResult> {
   return async (endpoint, payload) => {
     try {
       switch (endpoint) {
@@ -106,13 +134,13 @@ function makeRpcHandler(store: SettingsStore): (endpoint: string, payload: unkno
           return { ok: true, value: listModelRows(store) }
         case 'fetchModels': {
           const p = payload as { routeId?: string }
-          if (p?.routeId === undefined) throw new Error('fetchModels requires routeId')
+          if (p?.routeId === undefined) return rpcFailure('bad-request', 'fetchModels requires routeId', { issues: [] })
           const route = resolveRoute(store, p.routeId)
           const baseURL = route.baseURL
           if (typeof baseURL !== 'string' || baseURL.length === 0) throw new Error(`route "${p.routeId}" has no baseURL`)
           const apiKey = apiKeyFor(route)
           const fetchOptions = apiKey === undefined ? undefined : { apiKey }
-          const entries = await fetchModels(productionFetcher, baseURL, fetchOptions)
+          const entries = await fetchModels(fetcher, baseURL, fetchOptions)
           if (entries === null) throw new Error('the endpoint did not return a llama.cpp model listing')
           // expose each entry's computed context size so the card can show what would be filled
           const models = entries.map(e => ({ id: e.id ?? null, contextWindow: contextWindowFromEntry(e) }))
@@ -120,21 +148,71 @@ function makeRpcHandler(store: SettingsStore): (endpoint: string, payload: unkno
         }
         case 'applyContextWindows': {
           const p = payload as { routeId?: string; windows?: Array<{ modelId: string; rounded: number }> }
-          if (p?.routeId === undefined || !Array.isArray(p.windows)) throw new Error('applyContextWindows requires routeId and windows')
+          if (p?.routeId === undefined || !Array.isArray(p.windows)) return rpcFailure('bad-request', 'applyContextWindows requires routeId and windows', { issues: [] })
           for (const w of p.windows) {
-            if (typeof w.modelId !== 'string' || typeof w.rounded !== 'number') throw new Error('each window needs a modelId and rounded size')
+            if (typeof w.modelId !== 'string' || typeof w.rounded !== 'number') return rpcFailure('bad-request', 'each window needs a modelId and rounded size', { issues: [] })
             await persistModels(store, p.routeId, w.modelId, w.rounded)
           }
           return { ok: true, value: null }
         }
+        case 'listReasoningRows':
+          return { ok: true, value: listReasoningRows(store) }
+        case 'saveModel': {
+          // `null` is the clear part (drop the stored value); an absent part is untouched.
+          const p = payload as { routeId?: string; modelId?: string; efforts?: ReasoningEfforts; contextWindow?: number | null }
+          if (p?.routeId === undefined || p.modelId === undefined) return rpcFailure('bad-request', 'saveModel requires routeId and modelId', { issues: [] })
+          if (p.efforts === undefined && p.contextWindow === undefined) return rpcFailure('bad-request', 'saveModel requires efforts or contextWindow', { issues: [] })
+          if (p.efforts !== undefined) {
+            const errors = validateEfforts(p.efforts)
+            if (errors.length > 0) return rpcFailure('bad-request', errors.join('; '), { issues: [] })
+          }
+          if (typeof p.contextWindow === 'number' && (!Number.isInteger(p.contextWindow) || p.contextWindow <= 0)) {
+            return rpcFailure('bad-request', 'contextWindow must be a positive integer', { issues: [] })
+          }
+          const parts: ModelSaveParts = {}
+          if (p.efforts !== undefined) parts.efforts = p.efforts
+          if (p.contextWindow !== undefined) parts.contextWindow = p.contextWindow
+          await persistModelSave(store, p.routeId, p.modelId, parts)
+          return { ok: true, value: null }
+        }
+        case 'refreshContextWindow': {
+          const p = payload as { routeId?: string; modelId?: string }
+          if (p?.routeId === undefined || p.modelId === undefined) return rpcFailure('bad-request', 'refreshContextWindow requires routeId and modelId', { issues: [] })
+          const contextWindow = await refreshContextWindowValue(store, fetcher, p.routeId, p.modelId)
+          return { ok: true, value: { contextWindow } }
+        }
         default:
-          return { ok: false, error: { message: `unknown endpoint "${endpoint}"`, code: 'UNKNOWN_ENDPOINT' } }
+          return rpcFailure('internal', `unknown endpoint "${endpoint}"`, {})
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      return { ok: false, error: { message, code: 'MODEL_SETTINGS_ERROR' } }
+      // 'internal' is the dsh carrier's catch-all code; the thrown message stays human-readable.
+      return rpcFailure('internal', message, {})
     }
   }
+}
+
+/**
+ * Read one model's context window straight from its llama.cpp listing and force-write it:
+ * resolve the route (a baseURL is required), fetch `/v1/models`, find the entry by id, read
+ * ctx-size/fit-ctx, floor to the thousand. Every failure throws a descriptive error — refresh
+ * is an explicit user act and must never skip quietly.
+ */
+async function refreshContextWindowValue(store: SettingsStore, fetcher: Fetcher, routeId: string, modelId: string): Promise<number> {
+  const route = resolveRoute(store, routeId)
+  const baseURL = route.baseURL
+  if (typeof baseURL !== 'string' || baseURL.length === 0) throw new Error(`route "${routeId}" has no baseURL`)
+  const apiKey = apiKeyFor(route)
+  const fetchOptions = apiKey === undefined ? undefined : { apiKey }
+  const entries = await fetchModels(fetcher, baseURL, fetchOptions)
+  const entry = entries.find(e => e.id === modelId)
+  if (entry === undefined) throw new Error(`model "${modelId}" is not in the ${routeId} listing`)
+  const raw = contextWindowFromEntry(entry)
+  if (raw === null) throw new Error(`model "${modelId}" has no ctx-size or fit-ctx in its preset`)
+  const rounded = roundDown(raw)
+  if (rounded === null) throw new Error(`model "${modelId}" has an unusable context size (${raw})`)
+  await persistContextWindow(store, routeId, modelId, rounded)
+  return rounded
 }
 
 export function apply(ctx: Context): void {

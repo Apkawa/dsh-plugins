@@ -89,6 +89,25 @@ export function planContextWindowWrite(models: readonly LlmModelEntry[], modelId
   return { models: next, changed: true }
 }
 
+/**
+ * Plan how one model's `contextWindow` changes when the caller explicitly asks
+ * to replace the stored value (the settings UI's refresh/save path). Unlike
+ * {@link planContextWindowWrite}, an existing positive contextWindow is NOT a
+ * user override here — it is overwritten. A missing entry is created; a value
+ * that already matches needs no write.
+ * @param models - the route's current models list.
+ * @param modelId - the model to replace the value for.
+ * @param value - the contextWindow to store.
+ */
+export function planContextWindowOverwrite(models: readonly LlmModelEntry[], modelId: string, value: number): PlanResult {
+  const index = models.findIndex(m => m.id === modelId)
+  if (index === -1) return { models: [...models, { id: modelId, contextWindow: value }], changed: true }
+  const existing = models[index]
+  if (existing !== undefined && existing.contextWindow === value) return { models: [...models], changed: false }
+  const next = models.map((m, i) => (i === index ? { ...m, contextWindow: value } : m))
+  return { models: next, changed: true }
+}
+
 /** True when a thrown error is a settings revision conflict. */
 function isConflict(err: unknown): boolean {
   return err instanceof Error && (err as { code?: string }).code === 'SETTINGS_CONFLICT'
@@ -119,6 +138,45 @@ export async function persistModels(
     const models = Array.isArray(route.models) ? [...route.models] : []
     const plan = planContextWindowWrite(models, modelId, rounded)
     if (!plan.changed) return // a user override stands, or the value is already correct
+    try {
+      await store.setRouteModels(routeId, plan.models, revision)
+      return
+    } catch (err) {
+      if (isConflict(err) && !retried) {
+        retried = true
+        continue // re-read and retry once
+      }
+      throw err
+    }
+  }
+}
+
+/**
+ * Explicitly replace one model's `contextWindow` through the store with
+ * revision fencing. Unlike {@link persistModels}, an existing positive value is
+ * overwritten — this is a deliberate user act (the settings UI's refresh/save),
+ * not the autofill path. On a single `SettingsConflictError` it re-reads and
+ * retries once, then gives up. A route that is absent from the section, or a
+ * value already stored, is skipped quietly; any other error propagates.
+ * @param store - the injected settings seam.
+ * @param routeId - the provider route key to write under.
+ * @param modelId - the model to replace the value for.
+ * @param value - the contextWindow to store.
+ */
+export async function persistContextWindow(
+  store: SettingsStore,
+  routeId: string,
+  modelId: string,
+  value: number,
+): Promise<void> {
+  let retried = false
+  for (;;) {
+    const { value: section, revision } = store.read()
+    const route = section.providers?.[routeId]
+    if (route === undefined) return // the route is not in the section; skip quietly
+    const models = Array.isArray(route.models) ? [...route.models] : []
+    const plan = planContextWindowOverwrite(models, modelId, value)
+    if (!plan.changed) return // the value is already stored
     try {
       await store.setRouteModels(routeId, plan.models, revision)
       return

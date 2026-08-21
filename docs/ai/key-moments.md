@@ -81,9 +81,8 @@ The settings page is a tree of slots. Key nodes:
 accordion, not beside General/Models. For a top-level card you'd need `settings.section`
 (or extend the existing Models UI). Query the tree with `Slots.listSubTree` before registering.
 
-In our final design we dropped the client card entirely (`CLIENT_ENABLED = false` in
-`src/client/index.ts`) and rely on the host autofill + the existing Models UI to display
-contextWindows.
+**Superseded**: the reasoning-settings rework revived the client half (per-model accordion,
+`src/client/ReasoningSection.tsx`); the card is no longer disabled — see §8–§10.
 
 ## 5. Event flow (host vs client)
 
@@ -100,9 +99,10 @@ its display. Verify exact signatures in `packages/settings/settings/src/types.ts
 
 ## 6. Module budget (KISS cap)
 
-Seven host modules: `round.ts`, `props.ts`, `probe.ts`, `settings-io.ts`, `autofill.ts`,
-`log.ts`, `index.ts`. The client half is disabled but kept (`client/{card,controller,index,slot-contract}.tsx`).
-If adding new capabilities, prefer a new consumer/module over rewriting the core.
+Host modules (superseded list — the rework added `efforts.ts`, `model-save.ts`): `round.ts`,
+`props.ts`, `probe.ts`, `settings-io.ts`, `autofill.ts`, `log.ts`, `index.ts`. The client half
+is active again (reasoning accordion + controller). If adding new capabilities, prefer a new
+consumer/module over rewriting the core.
 
 ## 7. Logging (dbg wrapper)
 
@@ -113,3 +113,56 @@ All plugin logs go through `src/log.ts` → `dbg.{log,info,warn,debug,error}`; t
 log-level flag to piggyback on (`DSH_TELEMETRY_MODE` is OTLP-only; the dynamic-package vm
 sandbox console is unconditional write-through), so the flag is ours. Planned: extract
 `log.ts` into a shared package for other plugins later — until then it stays local.
+
+## 8. RPC carrier contract (plugin channel results)
+
+The costliest fact-gathering detour of this build: our handler's errors reached the UI as a
+red wall of raw zod issues instead of a message. The mechanism, once known, makes debugging instant:
+
+- **Wire schema**: `dsh/packages/host/apiproxy/src/api/rpc.schema.ts` — every server-response's
+  `result` is validated against `rpcResultSchema`: `{ok:true, value}` (value slot stays wide) or
+  `{ok:false, error: RpcError}`, where `RpcError` is a **closed** discriminated union by `code`
+  (~35 codes: `bad-request`, `settings-rejected`, …, `internal`) + `message` + **required**
+  `details` (per-code shape). Invented codes or missing `details` fail validation.
+- **The wall is produced CLIENT-side**: `dsh/packages/client/connection/src/client/rpc.ts:42` runs
+  `serverResponseSchema.parse(response.json())`. A non-conformant error → the parse throws a zod
+  issues array → that string reaches the plugin UI as the error text. A curl to the HTTP surface
+  (`POST http://127.0.0.1:3080/model-settings/<endpoint>` with a
+  `{"type":"client-request","rpcId":…,"method":…,"payload":…}` body) bypasses the client parse and
+  shows the raw server-response JSON — ideal for probing which build is actually running (§10).
+- **Conforming errors**: payload-validation failures → `code:'bad-request'`, `details:{issues:[]}`;
+  runtime failures → `code:'internal'`, `details:{}` (dsh's own catch-all — see `transportError()`
+  in `rpc.ts`). Finer codes (`model-unavailable`, `model-discovery-failed`) exist but need typed
+  details; we use the two above (KISS trade-off noted).
+- **Rule**: never invent an RPC error code or omit `details`. Our builder: `rpcFailure()` in
+  `src/index.ts` — every handler error path goes through it.
+
+## 9. dsh reasoningEfforts / contextWindow semantics (llm-pi-ai)
+
+Discovered by trial and error against dsh's runtime validation; read these first next time:
+
+- `reasoningEfforts?: false | mapping` — zod `z.union([z.const(false), dict])` in
+  `dsh/packages/llm/llm-pi-ai/src/config.ts` (~203–225). `undefined` = inherit the installed
+  catalog; `false` = explicit non-reasoning model (the canonical "clear"); `{}` or null → runtime
+  `invalid()` error. **Clearing a stored mapping must write `false`, not `{}`.**
+- `contextWindow`: zod `z.number().step(1).min(1)`, but resolution is
+  `entry.contextWindow ?? base?.contextWindow ?? request.defaultContextWindow` (`catalog.ts:510`) —
+  an **absent key is legal**. Clearing = drop the key from the entry. Reasoning resolution lives in
+  `resolveModelReasoning` (~315–365) in the same file.
+- Our channel's wire contract (one Save commits both parts): `saveModel({routeId, modelId,
+  efforts?, contextWindow?})` — `efforts:{}` → clear the mapping (host stores `false`);
+  `contextWindow:null` → drop the key; an absent part = untouched.
+
+## 10. Host/client version skew + probing
+
+- The client bundle (`lib/client.js`) is served from disk on every page load; the host half is
+  pinned in memory at dsh process start. New client + stale host = mixed behavior (the client posts
+  a new wire shape, the old host rejects it with old error codes).
+- **Restart rules**: client-only changes → page reload; host changes → full dsh web restart.
+  `pnpm build` = `tsc -p tsconfig.json` (host → `lib/`) + `tsdown` (client bundle) — both halves
+  from one command.
+- **Version fingerprint**: the error-response shape reveals which host build is running — old codes
+  without `details` (`INVALID_EFFORTS`, `MODEL_SETTINGS_ERROR`) = pre-carrier-conformance host;
+  conforming `{code, message, details}` = current. Check this BEFORE suspecting a source bug: one
+  remark batch was diagnosed as a stale process (user's curl showed the old shape) with zero code
+  changes needed.

@@ -1,37 +1,110 @@
 /**
- * Model-settings plugin, browser half: registers one card in the configurable
- * plugins tab's `settings.plugin.item` slot, keyed by this plugin's namespace.
- * The card appears only when the Host serves that namespace (stage 5 wires it);
- * a deployment without the host half renders nothing here.
+ * Model-settings plugin, browser half. It registers three things:
+ *  - the v2 reasoning SECTION — a top-level settings page that edits each model's
+ *    per-level thinking mapping (the primary feature; always on);
+ *  - the v2 composer EFFORT BUTTON in `conversation.input.right` (always on; reads
+ *    the session's shared model directory, provided by ui-model-selection);
+ *  - the v1 contextWindow CARD in the plugins tab (disabled while host autofill is
+ *    the only writer; kept verbatim below).
+ * A deployment without the Host half renders nothing useful here.
  */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore, type ClientContext, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { ModelSettingsCardController } from './controller.ts'
 import { ModelSettingsCard } from './card.tsx'
+import { ReasoningSectionController } from './reasoning-controller.ts'
+import { ReasoningSection } from './ReasoningSection.tsx'
+import { EffortButton, type EffortButtonFace } from './EffortButton.tsx'
+import type { DirectoryState, Selection } from './effort-button.ts'
 
 /** The settings namespace this plugin owns; the card's slot key. */
 const NS = 'model-settings'
 
 /**
- * The card is disabled while the host autofill is the only contextWindow writer:
+ * The v1 card is disabled while the host autofill is the only contextWindow writer:
  * it fills the provider's models in settings, and the existing Models UI displays
  * them. Flip to true to re-enable the manual-trigger card (kept verbatim below).
  */
 const CLIENT_ENABLED = false
 
+/**
+ * The model-directory service as ui-model-selection exposes it. This plugin cannot
+ * import `ModelDirectoryResolver` (not a declared peer), so the structural mirrors
+ * name only what the button reads; the live objects satisfy them.
+ */
+interface ModelDirectory {
+  store: SnapshotStore<DirectoryState>
+  load(): Promise<unknown>
+  select(selection: Selection): Promise<unknown>
+}
+
+interface ModelDirectoriesResolver {
+  directoryFor(sessionId: string): ModelDirectory
+}
+
 /** Required services (cordis fiber inject). */
 export const inject = ['slots', 'connection']
 
 /**
- * Register the model-settings card.
+ * Register the reasoning section + composer effort button (v2) and, when enabled,
+ * the v1 card.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
-  if (!CLIENT_ENABLED) return
   const connection = ctx.get('connection') as ConnectionHandle
+
+  // The reasoning section: a top-level settings page editing per-model mappings.
+  // It owns its store (created here, injected into the controller) and one face.
+  const reasoningController = new ReasoningSectionController(
+    connection,
+    createSnapshotStore({ phase: 'loading', rows: [] }),
+  )
+  // Populate on mount; the section surfaces a Retry control if this fails early.
+  void reasoningController.loadRows()
+
+  ctx.slots.inject('settings.section', () =>
+    ctx.slots.register(
+      { name: 'settings.section', id: NS, order: 15, label: 'Model settings', inject: () => reasoningController.inject() },
+      ReasoningSection,
+    ),
+  )
+
+  if (!CLIENT_ENABLED) return
+  // The composer effort button: sits in `conversation.input.right` (left of the
+  // model seat) over the SAME shared directory ModelSelect uses. The directory is
+  // provided by ui-model-selection; read it defensively so a deployment without
+  // that package simply has no button rather than failing to load.
+
+  // WARNING: Я отключил EffortButton, оно пока нам ни к чему,
+  // но удалять пока жалко, может быть мы придумаем какую то функциональность
+  ctx.inject(['slots', 'modelDirectories'], scope => {
+    const models = (scope as unknown as { modelDirectories?: ModelDirectoriesResolver }).modelDirectories
+    if (models === undefined) return
+    scope.slots.inject('conversation.input.right', () =>
+      scope.slots.register(
+        {
+          name: 'conversation.input.right',
+          id: 'reasoning-effort',
+          order: 0,
+          inject: (sessionId): EffortButtonFace => {
+            const directory = models.directoryFor(sessionId)
+            return {
+              hooks: { directory: directory.store },
+              load: () => {
+                void directory.load()
+              },
+              select: selection => directory.select(selection).then(() => true, () => false),
+            }
+          },
+        },
+        EffortButton,
+      ),
+    )
+  })
+
+  // The v1 card (disabled while autofill is the only contextWindow writer).
   const controller = new ModelSettingsCardController(connection)
-  // Populate on mount; the card surfaces a Retry control if this fails early.
   void controller.loadModels()
 
   // The callback is a generator yielding the registration disposer, so fiber

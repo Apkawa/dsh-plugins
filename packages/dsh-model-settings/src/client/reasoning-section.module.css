@@ -1,0 +1,275 @@
+/* The reasoning settings section, in the settings-panel design language:
+ * 14/22 body, 12/18 caption, capsule controls (h36 r18; h28 r14 where a row is
+ * dense), 32px fields, and `border-l2` hairlines — the vocabulary GeneralSection
+ * and ModelsSection already use. Every color resolves through a `--dsw-alias-*`
+ * token, so light and dark themes both hold without own branches. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Loading / empty states: plain text in the tertiary tone. */
+.stateText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* One OpenAI-compatible route: outlined on the panel fill, its models nested. */
+.rowCard {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rowName {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Reads as an annotation on the route name, not a second title. */
+.rowTag {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modelRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modelHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modelName {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The ctx field sits on its own row below the model name, label + input. */
+.ctxRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The ctx field's caption: names the value in the dense model row. */
+.ctxLabel {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* `box-sizing` on every control: the app has no global border-box reset, so
+   without it outlined controls stand taller than their filled neighbours. */
+.ctxInput {
+  box-sizing: border-box;
+  flex: none;
+  width: 120px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.ctxInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.saveButton,
+.secondaryButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.saveButton {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.saveButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+/* The dense capsule (h28 r14): refresh and retry sit inside rows. */
+.secondaryButton {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.saveButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ctxInput:focus-visible,
+.wireInput:focus-visible,
+.saveButton:focus-visible,
+.secondaryButton:focus-visible,
+.accordionSummary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+/* The level editor folds behind a native <details>; the chevron is drawn in
+   CSS so it inherits the theme and rotates on open. */
+.accordionSummary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.accordionSummary::-webkit-details-marker {
+  display: none;
+}
+
+.accordionSummary:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.accordionSummary::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  transform: rotate(-45deg) translate(-1px, -1px);
+  transition: transform 120ms ease;
+}
+
+details[open] > .accordionSummary::before {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.levelRows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.levelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.levelRow input[type='checkbox'] {
+  accent-color: var(--dsw-alias-brand-primary);
+}
+
+/* A fixed column keeps the wire inputs aligned across levels. */
+.levelName {
+  flex: none;
+  width: 72px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.wireInput {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.wireInput:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.errorNotice {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accordionSummary::before {
+    transition: none;
+  }
+}

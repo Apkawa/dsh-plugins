@@ -1,18 +1,34 @@
 # @apkawa/dsh-model-settings
 
-Auto-fills `contextWindow` for llama.cpp models in dsh's Models settings. When you add or
-edit a model under a candidate provider (openai-completions / llama.cpp with a baseURL),
-the plugin fetches the provider's `/v1/models` listing, reads each model's INI preset
-(`ctx-size`, else `fit-ctx`), and writes the rounded value into the model's `contextWindow`.
+Per-model **reasoning effort** and **context window** management for llama.cpp models in dsh's settings.
+
+## Screenshot
+
+![Model settings section](./docs/dsh-model-settings-01.jpg) 
+
+## Features
+
+- **Model settings section** — a top-level settings page with a per-model accordion:
+  - the seven thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) as
+    checkboxes with wire values;
+  - a context-window field with a **Refresh** button that force-writes the size from the
+    provider's live `/v1/models` listing (rounded down to the thousand);
+  - one **Save** commits both parts together.
+- Clearing: unchecking every stored level activates Save and, on save, clears the model's
+  reasoning mapping (dsh's canonical `reasoningEfforts: false`); emptying the context-window
+  field of a sized model drops the key so the model inherits again.
+- **Context-window autofill** (host side): fills every unsized model's `contextWindow` from
+  the provider's INI preset (`ctx-size`, else `fit-ctx`), rounded down to the thousand.
 
 ## How it works
 
-- **Watcher** on `settings/updated` (host side, filtered to the `llm-pi-ai` section).
-- For each candidate route: one GET `<baseURL>/v1/models`, parse INI presets, fill every
-  model that has no nonzero `contextWindow` yet.
-- **Self-cycle guard**: a route whose models are all already sized is skipped entirely, so
-  our own write never schedules another round.
-- The existing Models UI displays the result (no separate card; the client half is disabled).
+- **Watcher** on `settings/updated` (host side, filtered to the `llm-pi-ai` section): for each
+  candidate route one GET `<baseURL>/v1/models`, parse INI presets, fill every model that has no
+  nonzero `contextWindow` yet.
+- **Self-cycle guard**: a route whose models are all already sized is skipped entirely, so our
+  own write never schedules another round.
+- The section's rows and saves go over the plugin-owned `/model-settings` RPC channel (host
+  handler on the same settings seam); failures surface as human-readable lines in the UI.
 
 ## Install
 

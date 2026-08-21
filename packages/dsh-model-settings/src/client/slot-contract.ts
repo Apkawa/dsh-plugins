@@ -18,3 +18,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export interface ModelSettingsItemOwnerProps {
   children?: never
 }
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    /** A top-level settings page; the shell renders these as ordered nav rows. */
+    'settings.section': { kind: 'list'; scope: 'root'; owner: SettingsSectionOwnerProps }
+    /** The composer's trailing accessory row, rendered just left of the model seat (session-scoped). */
+    'conversation.input.right': { kind: 'list'; scope: 'session' }
+  }
+}
+
+/** Owner share of a settings section (the shell supplies `close`; this section does not use it). */
+export interface SettingsSectionOwnerProps {
+  close: () => void
+}
