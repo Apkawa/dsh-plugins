@@ -92,6 +92,11 @@ function ModelRow({
   const [refreshing, setRefreshing] = useState(false)
   // While the ctx field is focused a re-list must not yank the user's draft away.
   const ctxFocused = useRef(false)
+  // The level editor is user-owned while it carries uncommitted changes: an
+  // external re-list (a settings change outside this section) may re-adopt the
+  // stored mapping only while the editor is clean, so a stale draft can never
+  // overwrite an externally changed mapping on Save.
+  const levelsDirty = useRef(false)
 
   // Focus-aware sync: after a save/refresh re-lists the rows, adopt the stored
   // value into the draft — but only while the field is unfocused.
@@ -100,12 +105,21 @@ function ModelRow({
     setCtxDraft(row.contextWindow === undefined ? '' : formatContextWindow(row.contextWindow))
   }, [row.contextWindow])
 
+  // Re-list aware sync: when the stored mapping moves under an untouched editor
+  // (an external settings change, or our own save's re-list), adopt it; a
+  // touched editor keeps the user's drafts.
+  useEffect(() => {
+    if (levelsDirty.current) return
+    setDrafts(draftsFromEfforts(row.efforts))
+  }, [row.efforts])
+
   /** Read one level's draft (all seven are always present after init). */
   function draftFor(level: string): LevelDraft {
     return drafts[level] ?? { offered: false, wire: '' }
   }
 
   function updateLevel(level: string, fn: (d: LevelDraft) => LevelDraft): void {
+    levelsDirty.current = true
     setDrafts(prev => ({ ...prev, [level]: fn(draftFor(level)) }))
   }
 
@@ -149,6 +163,10 @@ function ModelRow({
     setSaving(true)
     try {
       await save(row.routeId, row.modelId, effortsPart, contextWindow)
+      // The editor is user-owned only while it carries uncommitted changes: a
+      // committed save releases it, and a ctx-only save releases it when the
+      // editor actually matches the stored mapping (nothing pending).
+      if (effortsPart !== undefined || !draftsDirty(drafts, row.efforts)) levelsDirty.current = false
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {

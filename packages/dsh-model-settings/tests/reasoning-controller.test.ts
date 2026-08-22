@@ -4,13 +4,21 @@ import { ReasoningSectionController, type ReasoningRow, type ReasoningSectionSta
 /** A level → wire-value mapping as the section edits it. */
 type Efforts = { [level: string]: string | null }
 
+/** One scripted RPC envelope. */
+type Envelope = { ok: true; value: unknown } | { ok: false; error: { message: string } }
+
+/** A delayed envelope, so tests can script out-of-order responses. */
+function later(ms: number, envelope: Envelope): Promise<Envelope> {
+  return new Promise(resolve => setTimeout(() => resolve(envelope), ms))
+}
+
 /** Minimal ConnectionHandle double: records calls and returns scripted envelopes. */
 class FakeConnection {
   calls: Array<{ endpoint: string; payload: unknown }> = []
-  constructor(private readonly next: (endpoint: string, payload: unknown) => { ok: boolean; value?: unknown; error?: { message: string } }) {}
+  constructor(private readonly next: (endpoint: string, payload: unknown) => Envelope | Promise<Envelope>) {}
 
   rpc = {
-    call: async (_channel: string, endpoint: string, payload: unknown): Promise<{ ok: true; value: unknown } | { ok: false; error: { message: string } }> => {
+    call: async (_channel: string, endpoint: string, payload: unknown): Promise<Envelope> => {
       this.calls.push({ endpoint, payload })
       return this.next(endpoint, payload) as never
     },
@@ -153,5 +161,53 @@ describe('ReasoningSectionController', () => {
     }
     expect(threw).toBe(true)
     expect(store.getSnapshot().rows).toEqual(ROWS)
+  })
+
+  it('refreshRows replaces the listing without a loading phase', async () => {
+    let listing = ROWS
+    const { controller, store } = makeController(() => ({ ok: true, value: listing }))
+    await controller.loadRows()
+    listing = [ROWS[1]] // an external model change landed in the section
+    await controller.refreshRows()
+    const snap = store.getSnapshot()
+    expect(snap.phase).toBe('ready')
+    expect(snap.rows).toEqual([ROWS[1]])
+  })
+
+  it('refreshRows keeps the last listing and stays ready on an RPC failure', async () => {
+    let down = false
+    const { controller, store } = makeController(() => (down ? { ok: false, error: { message: 'host unreachable' } } : { ok: true, value: ROWS }))
+    await controller.loadRows()
+    down = true
+    await controller.refreshRows()
+    const snap = store.getSnapshot()
+    expect(snap.phase).toBe('ready')
+    expect(snap.rows).toEqual(ROWS)
+    expect(snap.error).toBeUndefined()
+  })
+
+  it('refreshRows settles a stuck loading phase when its RPC fails', async () => {
+    // The section is still in its initial loading phase (the first list never settled);
+    // a failed invalidation must not leave the UI on "Loading models…" forever.
+    const { controller, store } = makeController(() => ({ ok: false, error: { message: 'host unreachable' } }))
+    await controller.refreshRows()
+    const snap = store.getSnapshot()
+    expect(snap.phase).toBe('ready')
+    expect(snap.rows).toEqual([])
+  })
+
+  it('refreshRows ignores a stale response that lands after a newer list', async () => {
+    const STALE: ReasoningRow[] = [{ routeId: 'urabe', modelId: 'Stale' }]
+    const FRESH: ReasoningRow[] = [{ routeId: 'urabe', modelId: 'Fresh' }]
+    let listing = 0
+    const { controller, store } = makeController(() => {
+      listing++
+      if (listing === 1) return later(1, { ok: true, value: ROWS }) // the seed list
+      if (listing === 2) return later(30, { ok: true, value: STALE }) // slow stale list
+      return later(5, { ok: true, value: FRESH }) // fast newer list
+    })
+    await controller.loadRows()
+    await Promise.all([controller.refreshRows(), controller.refreshRows()])
+    expect(store.getSnapshot().rows).toEqual(FRESH)
   })
 })

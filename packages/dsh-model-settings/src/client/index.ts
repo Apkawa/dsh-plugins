@@ -43,8 +43,13 @@ interface ModelDirectoriesResolver {
   directoryFor(sessionId: string): ModelDirectory
 }
 
+/** The client-side forwarded-event seam (the `remote` service from dsh-api-gateway), as this plugin consumes it. Structural mirror: the client bundle must not depend on dsh-api-remotes, so only the subscription this plugin uses is named here. */
+interface RemoteEvents {
+  $on(event: 'settings/document-updated', listener: (ns: string, revision: number) => void): () => void
+}
+
 /** Required services (cordis fiber inject). */
-export const inject = ['slots', 'connection']
+export const inject = ['slots', 'connection', 'remote']
 
 /**
  * Register the reasoning section + composer effort button (v2) and, when enabled,
@@ -68,6 +73,21 @@ export function apply(ctx: ClientContext): void {
       { name: 'settings.section', id: NS, order: 15, label: 'Model settings', inject: () => reasoningController.inject() },
       ReasoningSection,
     ),
+  )
+
+  // The llm-pi-ai section changes outside this section too: the standard Models
+  // UI or a settings-file edit commits it on the Host, which then forwards
+  // settings/document-updated. Re-list silently so the section tracks the change
+  // without a loading flash. The ns string mirrors the Host LLM_NS: the client
+  // bundle must not import the Host half, and rows derive only from that section.
+  const remote = ctx.get('remote') as RemoteEvents
+  ctx.effect(
+    () =>
+      remote.$on('settings/document-updated', (ns) => {
+        if (ns !== 'llm-pi-ai') return
+        void reasoningController.refreshRows()
+      }),
+    'model-settings: external model refresh',
   )
 
   if (!CLIENT_ENABLED) return

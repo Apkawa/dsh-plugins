@@ -78,6 +78,8 @@ function messageOf(error: unknown): string {
  */
 export class ReasoningSectionController {
   readonly store: SnapshotStore<ReasoningSectionState>
+  /** Monotonic sequence over listing requests; a response applies only while its request is still the newest. */
+  private listingSeq = 0
 
   constructor(private readonly connection: ConnectionHandle, store: SnapshotStore<ReasoningSectionState>) {
     this.store = store
@@ -94,20 +96,51 @@ export class ReasoningSectionController {
   }
 
   async loadRows(): Promise<void> {
+    const seq = ++this.listingSeq
     this.store.update(draft => {
       draft.phase = 'loading'
     })
     try {
       const rows = await this.call<ReasoningRow[]>('listReasoningRows', {})
+      if (seq !== this.listingSeq) return // a newer list owns the store now
       this.store.update(draft => {
         draft.phase = 'ready'
         draft.rows = rows
       })
     } catch (error) {
+      if (seq !== this.listingSeq) return
       this.store.update(draft => {
         draft.phase = 'error'
         draft.error = messageOf(error)
         draft.rows = []
+      })
+    }
+  }
+
+  /**
+   * Re-list for an external invalidation (a settings change outside this section):
+   * no loading phase, the last listing is kept on failure, and the method never
+   * throws — a background refresh must never clobber a working list. A stale
+   * response is dropped by the shared sequence so an old listing cannot land
+   * over a newer one.
+   */
+  async refreshRows(): Promise<void> {
+    const seq = ++this.listingSeq
+    try {
+      const rows = await this.call<ReasoningRow[]>('listReasoningRows', {})
+      if (seq !== this.listingSeq) return
+      this.store.update(draft => {
+        draft.phase = 'ready'
+        draft.rows = rows
+      })
+    } catch {
+      // Swallows the RPC failure on purpose: invalidation is best-effort and the
+      // last good listing stays up.
+      if (seq !== this.listingSeq) return
+      // Settle a stuck 'loading' phase (the load that flipped it was superseded).
+      this.store.update(draft => {
+        if (draft.phase !== 'loading') return
+        draft.phase = 'ready'
       })
     }
   }
