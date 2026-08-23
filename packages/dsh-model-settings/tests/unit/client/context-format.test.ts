@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { formatContextWindow, parseContextWindow } from '../src/client/context-format.ts'
+import { formatContextWindow, parseContextWindow } from '../../../src/client/context-format.ts'
 
 describe('formatContextWindow', () => {
   it('spells whole thousands with K', () => {

@@ -8,7 +8,7 @@ import {
   type SettingsStore,
   type LlmModelEntry,
   type LlmSection,
-} from '../src/settings-io.ts'
+} from '../../../src/settings-io.ts'
 
 /** A route profile as stored in the llm-pi-ai section (we only touch a few fields). */
 type Route = { api?: string; baseURL?: string; apiKeyEnv?: string; models?: LlmModelEntry[] }

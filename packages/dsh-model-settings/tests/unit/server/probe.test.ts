@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fetchModels, type Fetcher } from '../src/probe.ts'
+import { fetchModels, type Fetcher } from '../../../src/probe.ts'
 
 // A slice of the live /v1/models listing (docs/specs/v1): each entry carries an
 // INI status.preset; top-level context_window is null and unused.

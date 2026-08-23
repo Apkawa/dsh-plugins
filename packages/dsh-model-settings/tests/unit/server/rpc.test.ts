@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { makeRpcHandler } from '../src/index.ts'
-import { type SettingsStore, type LlmModelEntry, type LlmSection } from '../src/settings-io.ts'
-import { type Fetcher } from '../src/probe.ts'
+import { makeRpcHandler } from '../../../src/index.ts'
+import { type SettingsStore, type LlmModelEntry, type LlmSection } from '../../../src/settings-io.ts'
+import { type Fetcher } from '../../../src/probe.ts'
 
 /** A route profile as stored in the llm-pi-ai section. */
 type Route = { api?: string; baseURL?: string; apiKeyEnv?: string; models?: LlmModelEntry[] }

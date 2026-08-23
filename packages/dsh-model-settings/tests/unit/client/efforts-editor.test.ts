@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { draftsDirty, draftsFromEfforts, effortsFromDrafts, validateEffortsClient } from '../src/client/efforts-editor.ts'
+import { draftsDirty, draftsFromEfforts, effortsFromDrafts, validateEffortsClient } from '../../../src/client/efforts-editor.ts'
 
 describe('efforts-editor (pure client logic)', () => {
   it('draftsFromEfforts copies stored values for offered levels', () => {

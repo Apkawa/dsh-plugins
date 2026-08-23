@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contextWindowFromEntry, parseProps, parsePreset } from '../src/props.ts'
+import { contextWindowFromEntry, parseProps, parsePreset } from '../../../src/props.ts'
 
 describe('parseProps (deferred per-model /probe)', () => {
   const FIXTURE = JSON.stringify({

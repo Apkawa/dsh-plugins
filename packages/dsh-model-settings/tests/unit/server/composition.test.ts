@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { describe, expect, it } from 'vitest'
 import { SettingsProvider as Settings, settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import { apply } from '../src/index.ts'
+import { apply } from '../../../src/index.ts'
 
 /** In-memory settings provider double: stores nothing on disk, resolves sections live. */
 class MemorySettings extends Settings {

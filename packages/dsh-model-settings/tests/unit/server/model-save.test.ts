@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { planModelSave, persistModelSave } from '../src/model-save.ts'
-import type { ReasoningEfforts } from '../src/efforts.ts'
-import { type SettingsStore, type LlmModelEntry, type LlmSection } from '../src/settings-io.ts'
+import { planModelSave, persistModelSave } from '../../../src/model-save.ts'
+import type { ReasoningEfforts } from '../../../src/efforts.ts'
+import { type SettingsStore, type LlmModelEntry, type LlmSection } from '../../../src/settings-io.ts'
 
 const EFFORTS: ReasoningEfforts = { medium: 'medium', high: 'high' }
 

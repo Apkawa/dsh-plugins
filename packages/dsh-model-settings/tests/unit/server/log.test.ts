@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { dbg } from '../src/log.ts'
+import { dbg } from '../../../src/log.ts'
 
 /**
  * The plugin's gated logger. Every level except `error` is silent unless the

@@ -1,5 +1,5 @@
 ---
-name: spec
+name: dumbspec
 description: A structured, staged workflow for turning a raw user request into a researched specification and an executable work plan.
 
 disable-model-invocation: true
@@ -23,20 +23,7 @@ These are non-negotiable and override any urge to "be helpful" by jumping ahead:
 
 ## Directory layout
 
-- **Spec root:** `docs/specs/`
-- Each task lives in its own directory under the spec root: `docs/specs/<task-tag>/`
-- The task tag is a short identifier matching `[\w-_]+` (lowercase Latin letters, digits, `_`, `-`).
-
-## Files
-
-Every task directory contains up to four files, one per stage:
-
-| File          | Purpose                                                        |
-| ------------- | -------------------------------------------------------------- |
-| `draft.md`    | The raw input. Record the user's request verbatim (or let the user create it manually). |
-| `research.md` | Findings from research into feasibility, constraints, and options. |
-| `spec.md`     | The specification, derived from the draft plus the research results. |
-| `plan.md`     | The work plan, with each step marked as completed once done.    |
+Specs live in `.dumbspec/`: active tasks in `current/<task-tag>/`, completed/frozen tasks move to `archive/<task-tag>/`. See `.dumbspec/AGENTS.md` for the full layout, tag rules, and per-task file conventions.
 
 ## Language
 
@@ -62,17 +49,19 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done.
 ---
 
 ## Stage 0 — Research + spec + plan
-- [ ] <concrete step>
-- [ ] <concrete step>
+- [x] <concrete step>
+- [x] <concrete step>
 
 **Criterion:** <observable acceptance criterion for the stage>
 **Commit:** `<type>(<scope>): <summary>`
 
 ## Stage N — <stage name>
+- [x] <concrete step>
+- [~] <concrete step>
 - [ ] <concrete step>
 
 **Criterion:** <observable acceptance criterion for the stage>
-**Commit:** `<type>(<scope>): <summary>`
+**Commit:** N/A 
 ```
 
 Rules:
@@ -94,7 +83,7 @@ Rules:
 
 ## Resuming an existing task
 
-The user may point at an existing task by its directory (`docs/specs/<tag>/`) or a file inside it (e.g. `.../draft.md`). In that case the task is **not** new — do not restart from step 1 and do not overwrite existing artifacts unless explicitly asked. Instead, inspect the task directory and resume from the stage indicated by which files already exist:
+The user may point at an existing task by its directory (`current/<task-tag>/` under `.dumbspec/`) or a file inside it (e.g. `.../draft.md`). In that case the task is **not** new — do not restart from step 1 and do not overwrite existing artifacts unless explicitly asked. Instead, inspect the task directory and resume from the stage indicated by which files already exist:
 
 | Files present in the task dir | Current stage            | Continue with                    |
 | ----------------------------- | ------------------------ | -------------------------------- |

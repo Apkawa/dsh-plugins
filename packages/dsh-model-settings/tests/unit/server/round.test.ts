@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { roundDown } from '../src/round.ts'
+import { roundDown } from '../../../src/round.ts'
 
 describe('roundDown', () => {
   // Floor to the nearest thousand; values at or below 1000 are kept as-is.

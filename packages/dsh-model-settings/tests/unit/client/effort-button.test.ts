@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { currentReasoning, effortChoices, effortLabel } from '../src/client/effort-button.ts'
+import { currentReasoning, effortChoices, effortLabel } from '../../../src/client/effort-button.ts'
 
 const REASONING = {
   efforts: [

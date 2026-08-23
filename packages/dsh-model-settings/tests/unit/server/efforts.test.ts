@@ -5,8 +5,8 @@ import {
   validateEfforts,
   persistReasoning,
   type ReasoningEfforts,
-} from '../src/efforts.ts'
-import { type SettingsStore, type LlmModelEntry, type LlmSection } from '../src/settings-io.ts'
+} from '../../../src/efforts.ts'
+import { type SettingsStore, type LlmModelEntry, type LlmSection } from '../../../src/settings-io.ts'
 
 /** A route profile as stored in the llm-pi-ai section. */
 type Route = { api?: string; baseURL?: string; apiKeyEnv?: string; models?: LlmModelEntry[] }

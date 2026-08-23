@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { autofill } from '../src/autofill.ts'
-import type { Fetcher } from '../src/probe.ts'
-import type { ModelEntry } from '../src/props.ts'
-import type { SettingsStore, LlmSection, LlmModelEntry } from '../src/settings-io.ts'
+import { autofill } from '../../../src/autofill.ts'
+import type { Fetcher } from '../../../src/probe.ts'
+import type { ModelEntry } from '../../../src/props.ts'
+import type { SettingsStore, LlmSection, LlmModelEntry } from '../../../src/settings-io.ts'
 
 /** In-memory SettingsStore double (writes always succeed; revision bumps per write). */
 class FakeStore implements SettingsStore {

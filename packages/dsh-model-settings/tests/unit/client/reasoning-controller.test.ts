@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ReasoningSectionController, type ReasoningRow, type ReasoningSectionState } from '../src/client/reasoning-controller.ts'
+import { ReasoningSectionController, type ReasoningRow, type ReasoningSectionState } from '../../../src/client/reasoning-controller.ts'
 
 /** A level → wire-value mapping as the section edits it. */
 type Efforts = { [level: string]: string | null }
