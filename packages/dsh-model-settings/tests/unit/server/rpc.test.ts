@@ -80,6 +80,32 @@ describe('makeRpcHandler — v2 reasoning endpoints', () => {
     const res = await handler('nope', null)
     expect(res).toEqual({ ok: false, error: { message: 'unknown endpoint "nope"', code: 'internal', details: {} } })
   })
+
+  it('listReasoningRows exposes a model\'s stored input list (omitted when absent or malformed)', async () => {
+    const section: LlmSection = {
+      providers: {
+        urabe: {
+          api: 'openai-completions',
+          baseURL: 'http://x',
+          models: [
+            { id: 'm1', input: ['text', 'image'] },
+            { id: 'm2' },
+            { id: 'm3', input: 'image' }, // malformed: not an array of strings
+          ],
+        },
+      },
+    }
+    const store = new FakeStore(section)
+    const handler = makeRpcHandler(store)
+    const res = await handler('listReasoningRows', null)
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.value).toEqual([
+      { routeId: 'urabe', modelId: 'm1', input: ['text', 'image'] },
+      { routeId: 'urabe', modelId: 'm2' },
+      { routeId: 'urabe', modelId: 'm3' },
+    ])
+  })
 })
 
 describe('makeRpcHandler — saveModel', () => {
@@ -149,6 +175,45 @@ describe('makeRpcHandler — saveModel', () => {
     const store = new FakeStore(baseSection())
     const handler = makeRpcHandler(store)
     const res = await handler('saveModel', { routeId: 'urabe', modelId: 'Other-Model', contextWindow: 12.5 })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.error.code).toBe('bad-request')
+    expect(store.writeCount).toBe(0)
+  })
+
+  it('commits only the input part when the other parts are omitted', async () => {
+    const store = new FakeStore(baseSection())
+    const handler = makeRpcHandler(store)
+    const res = await handler('saveModel', { routeId: 'urabe', modelId: 'Other-Model', input: ['text', 'image'] })
+    expect(res).toEqual({ ok: true, value: null })
+    expect(store.writeCount).toBe(1)
+    expect(store.section.providers!.urabe.models![1]).toEqual({ id: 'Other-Model', name: 'no efforts yet', input: ['text', 'image'] })
+  })
+
+  it('rejects an empty input list without writing', async () => {
+    const store = new FakeStore(baseSection())
+    const handler = makeRpcHandler(store)
+    const res = await handler('saveModel', { routeId: 'urabe', modelId: 'Other-Model', input: [] })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.error.code).toBe('bad-request')
+    expect(store.writeCount).toBe(0)
+  })
+
+  it('rejects an input with an unknown modality without writing', async () => {
+    const store = new FakeStore(baseSection())
+    const handler = makeRpcHandler(store)
+    const res = await handler('saveModel', { routeId: 'urabe', modelId: 'Other-Model', input: ['text', 'audio'] })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.error.code).toBe('bad-request')
+    expect(store.writeCount).toBe(0)
+  })
+
+  it('rejects a non-array input without writing', async () => {
+    const store = new FakeStore(baseSection())
+    const handler = makeRpcHandler(store)
+    const res = await handler('saveModel', { routeId: 'urabe', modelId: 'Other-Model', input: 'image' })
     expect(res.ok).toBe(false)
     if (res.ok) return
     expect(res.error.code).toBe('bad-request')

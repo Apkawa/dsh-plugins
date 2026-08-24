@@ -1,6 +1,6 @@
 # @apkawa/dsh-model-settings
 
-Per-model **reasoning effort** and **context window** management for llama.cpp models in dsh's settings.
+Per-model **reasoning effort**, **context window**, and **vision input** management for llama.cpp models in dsh's settings.
 
 ## Screenshot
 
@@ -13,20 +13,29 @@ Per-model **reasoning effort** and **context window** management for llama.cpp m
     checkboxes with wire values;
   - a context-window field with a **Refresh** button that force-writes the size from the
     provider's live `/v1/models` listing (rounded down to the thousand);
-  - one **Save** commits both parts together.
+  - a **Vision** checkbox marking the model as vision-capable — checked stores
+    `input: ["text", "image"]`, unchecked stores the explicit text-only `input: ["text"]`
+    (so a model's saved modalities always win over the route's `defaultInput`);
+  - one **Save** commits every changed part together.
 - Clearing: unchecking every stored level activates Save and, on save, clears the model's
   reasoning mapping (dsh's canonical `reasoningEfforts: false`); emptying the context-window
   field of a sized model drops the key so the model inherits again.
 - **Context-window autofill** (host side): fills every unsized model's `contextWindow` from
   the provider's INI preset (`ctx-size`, else `fit-ctx`), rounded down to the thousand.
+- **Vision autofill** (host side): fills a model's `input` with `["text", "image"]` when the
+  provider's `/v1/models` entry declares it under `architecture.input_modalities` and the model
+  has no explicit `input` yet. A stored list is never overwritten; endpoints that report no
+  modalities are simply left as-is.
 
 ## How it works
 
 - **Watcher** on `settings/updated` (host side, filtered to the `llm-pi-ai` section): for each
   candidate route one GET `<baseURL>/v1/models`, parse INI presets, fill every model that has no
-  nonzero `contextWindow` yet.
-- **Self-cycle guard**: a route whose models are all already sized is skipped entirely, so our
-  own write never schedules another round.
+  nonzero `contextWindow` yet, and give every model the `input` list its entry declares.
+- **Self-cycle guard**: a route whose models are all sized **and** carry an explicit `input` is
+  skipped entirely, so our own write never schedules another round. An endpoint that reports no
+  modalities is re-listed on settings commits (but never re-written) until every model's `input`
+  is set.
 - The section's rows and saves go over the plugin-owned `/model-settings` RPC channel (host
   handler on the same settings seam); failures surface as human-readable lines in the UI.
 

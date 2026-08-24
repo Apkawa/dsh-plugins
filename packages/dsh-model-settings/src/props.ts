@@ -68,10 +68,12 @@ export function parsePreset(preset: string | undefined): ParsedPreset {
   return result
 }
 
-/** A minimal shape of a `/v1/models` listing entry, enough to read its context. */
+/** A minimal shape of a `/v1/models` listing entry, enough to read its context and modalities. */
 export interface ModelEntry {
   id?: string
   status?: { preset?: string }
+  /** llama.cpp stamps the served input modalities here (`input_modalities`). */
+  architecture?: { input_modalities?: unknown }
 }
 
 /**
@@ -84,4 +86,15 @@ export function contextWindowFromEntry(entry: ModelEntry): number | null {
   if (parsed.ctxSize !== undefined && parsed.ctxSize > 0) return parsed.ctxSize
   if (parsed.fitCtx !== undefined && parsed.fitCtx > 0) return parsed.fitCtx
   return null
+}
+
+/**
+ * True when a listing entry declares image input via `architecture.input_modalities`.
+ * Only a list naming `image` counts; anything else (absent, empty, malformed)
+ * means the endpoint says nothing about vision.
+ */
+export function entrySupportsVision(entry: ModelEntry): boolean {
+  const list = entry.architecture?.input_modalities
+  if (!Array.isArray(list)) return false
+  return list.some(modality => modality === 'image')
 }

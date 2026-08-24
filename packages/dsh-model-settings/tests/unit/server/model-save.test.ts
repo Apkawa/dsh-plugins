@@ -71,6 +71,30 @@ describe('planModelSave (one commit for ctx + efforts)', () => {
     expect(res.changed).toBe(false)
     expect(res.models).toEqual([{ id: 'A' }])
   })
+
+  it('applies only the input part when the other parts are omitted', () => {
+    const res = planModelSave([{ id: 'A', contextWindow: 8000 }], 'A', { input: ['text', 'image'] })
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'A', contextWindow: 8000, input: ['text', 'image'] }])
+  })
+
+  it('creates a single merged entry when the model is absent (input + contextWindow)', () => {
+    const res = planModelSave([{ id: 'X' }], 'B', { input: ['text', 'image'], contextWindow: 120000 })
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'X' }, { id: 'B', contextWindow: 120000, input: ['text', 'image'] }])
+  })
+
+  it('updates both the input and contextWindow parts of an existing entry in one plan', () => {
+    const res = planModelSave([{ id: 'A', contextWindow: 8000, input: ['text'] }], 'A', { input: ['text', 'image'], contextWindow: 120000 })
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'A', contextWindow: 120000, input: ['text', 'image'] }])
+  })
+
+  it('reports no change when the input part already matches (order-insensitive)', () => {
+    const res = planModelSave([{ id: 'A', input: ['image', 'text'] }], 'A', { input: ['text', 'image'] })
+    expect(res.changed).toBe(false)
+    expect(res.models).toEqual([{ id: 'A', input: ['image', 'text'] }])
+  })
 })
 
 /** A route profile as stored in the llm-pi-ai section (we only touch a few fields). */
@@ -122,6 +146,22 @@ describe('persistModelSave (fenced combined write + single retry)', () => {
     await persistModelSave(store, 'myroute', 'm1', { efforts: EFFORTS, contextWindow: 120000 })
     expect(store.writeCount).toBe(1)
     expect(store.section.providers?.['myroute']?.models).toEqual([{ id: 'm1', contextWindow: 120000, reasoningEfforts: EFFORTS }])
+  })
+
+  it('commits the contextWindow and input parts together in a single write', async () => {
+    const store = new FakeStore(section())
+    await persistModelSave(store, 'myroute', 'm1', { contextWindow: 120000, input: ['text', 'image'] })
+    expect(store.writeCount).toBe(1)
+    expect(store.section.providers?.['myroute']?.models).toEqual([{ id: 'm1', contextWindow: 120000, input: ['text', 'image'] }])
+  })
+
+  it('does not write when the input part already matches', async () => {
+    const s = section()
+    s.providers!.myroute!.models![0] = { id: 'm1', input: ['image', 'text'] }
+    const store = new FakeStore(s)
+    await persistModelSave(store, 'myroute', 'm1', { input: ['text', 'image'] })
+    expect(store.writeCount).toBe(0) // no-op Save must not churn the revision
+    expect(store.section.providers?.['myroute']?.models).toEqual([{ id: 'm1', input: ['image', 'text'] }])
   })
 
   it('does not write when both parts already match', async () => {

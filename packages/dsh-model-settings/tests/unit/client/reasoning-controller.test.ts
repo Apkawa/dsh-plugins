@@ -109,6 +109,19 @@ describe('ReasoningSectionController', () => {
     expect(conn.calls[0].payload).toStrictEqual({ routeId: 'urabe', modelId: 'Other-Model', efforts: {} })
   })
 
+  it('save posts the input part and refreshes the listing', async () => {
+    const { controller, conn } = makeController((endpoint) => (endpoint === 'saveModel' ? { ok: true, value: null } : { ok: true, value: ROWS }))
+    await controller.save('urabe', 'Other-Model', undefined, undefined, ['text', 'image'])
+    expect(conn.calls.map(c => c.endpoint)).toEqual(['saveModel', 'listReasoningRows'])
+    expect(conn.calls[0].payload).toStrictEqual({ routeId: 'urabe', modelId: 'Other-Model', input: ['text', 'image'] })
+  })
+
+  it('save omits the input part when input is undefined', async () => {
+    const { controller, conn } = makeController((endpoint) => (endpoint === 'saveModel' ? { ok: true, value: null } : { ok: true, value: ROWS }))
+    await controller.save('urabe', 'Other-Model', undefined, undefined)
+    expect(conn.calls[0].payload).toStrictEqual({ routeId: 'urabe', modelId: 'Other-Model' })
+  })
+
   it('save posts a null contextWindow (the clear) without omitting it', async () => {
     const { controller, conn } = makeController((endpoint) => (endpoint === 'saveModel' ? { ok: true, value: null } : { ok: true, value: ROWS }))
     await controller.save('urabe', 'Other-Model', undefined, null)

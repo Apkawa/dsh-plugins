@@ -38,6 +38,8 @@ export interface ReasoningRow {
   contextWindow?: number
   /** The current mapping, when one is set; absent means no levels offered yet. */
   efforts?: ReasoningEfforts
+  /** The current input modalities, when a non-empty list is stored; absent means none set yet. */
+  input?: string[]
 }
 
 /** Section-level load phase. */
@@ -58,8 +60,8 @@ export interface ReasoningSectionFace {
   }
   /** (Re)load the candidate model list from the Host. */
   loadRows(): void
-  /** Save one model's mapping and/or context window through the Host; throws on an RPC failure. An empty `efforts` clears the mapping, a `null` contextWindow clears its value. */
-  save(routeId: string, modelId: string, efforts?: ReasoningEfforts, contextWindow?: number | null): Promise<void>
+  /** Save one model's parts through the Host; throws on an RPC failure. An empty `efforts` clears the mapping, a `null` contextWindow clears its value, and an absent part is untouched. */
+  save(routeId: string, modelId: string, efforts?: ReasoningEfforts, contextWindow?: number | null, input?: string[]): Promise<void>
   /** Re-read one model's context window from its live listing and force-write it; throws on failure. */
   refreshContextWindow(routeId: string, modelId: string): Promise<void>
 }
@@ -90,7 +92,7 @@ export class ReasoningSectionController {
     return {
       hooks: { reasoningSection: this.store },
       loadRows: () => { void this.loadRows() },
-      save: (routeId, modelId, efforts, contextWindow) => this.save(routeId, modelId, efforts, contextWindow),
+      save: (routeId, modelId, efforts, contextWindow, input) => this.save(routeId, modelId, efforts, contextWindow, input),
       refreshContextWindow: (routeId, modelId) => this.refreshContextWindow(routeId, modelId),
     }
   }
@@ -145,11 +147,12 @@ export class ReasoningSectionController {
     }
   }
 
-  async save(routeId: string, modelId: string, efforts?: ReasoningEfforts, contextWindow?: number | null): Promise<void> {
+  async save(routeId: string, modelId: string, efforts?: ReasoningEfforts, contextWindow?: number | null, input?: string[]): Promise<void> {
     // `null` is the clear part; an absent part (undefined) leaves the stored value untouched.
-    const payload: { routeId: string; modelId: string; efforts?: ReasoningEfforts; contextWindow?: number | null } = { routeId, modelId }
+    const payload: { routeId: string; modelId: string; efforts?: ReasoningEfforts; contextWindow?: number | null; input?: string[] } = { routeId, modelId }
     if (efforts !== undefined) payload.efforts = efforts
     if (contextWindow !== undefined) payload.contextWindow = contextWindow
+    if (input !== undefined) payload.input = input
     try {
       await this.call('saveModel', payload)
       // The mapping and/or context window change on the Host; refresh the listing.

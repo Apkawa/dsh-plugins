@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contextWindowFromEntry, parseProps, parsePreset } from '../../../src/props.ts'
+import { contextWindowFromEntry, entrySupportsVision, parseProps, parsePreset } from '../../../src/props.ts'
 
 describe('parseProps (deferred per-model /probe)', () => {
   const FIXTURE = JSON.stringify({
@@ -90,5 +90,32 @@ describe('contextWindowFromEntry', () => {
   it('returns null for a zero or absent ctx-size', () => {
     expect(contextWindowFromEntry({ status: { preset: 'ctx-size = 0' } })).toBeNull()
     expect(contextWindowFromEntry({ status: { preset: 'fit-ctx = 0' } })).toBeNull()
+  })
+})
+
+describe('entrySupportsVision (architecture.input_modalities)', () => {
+  it('returns true when input_modalities names image', () => {
+    expect(entrySupportsVision({ id: 'm', architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] } })).toBe(true)
+  })
+
+  it('returns true for an image-only list (text is our constant, not the endpoint\'s claim)', () => {
+    expect(entrySupportsVision({ architecture: { input_modalities: ['image'] } })).toBe(true)
+  })
+
+  it('returns false when the list is text-only or has no image', () => {
+    expect(entrySupportsVision({ architecture: { input_modalities: ['text'] } })).toBe(false)
+    expect(entrySupportsVision({ architecture: { input_modalities: [] } })).toBe(false)
+  })
+
+  it('returns false when the architecture is absent', () => {
+    expect(entrySupportsVision({})).toBe(false)
+    expect(entrySupportsVision({ architecture: {} })).toBe(false)
+    expect(entrySupportsVision({ architecture: { input_modalities: undefined } })).toBe(false)
+  })
+
+  it('returns false for malformed input_modalities (non-array, non-string entries)', () => {
+    expect(entrySupportsVision({ architecture: { input_modalities: 'image' } })).toBe(false)
+    expect(entrySupportsVision({ architecture: { input_modalities: [1, 2] } })).toBe(false)
+    expect(entrySupportsVision({ architecture: { input_modalities: ['text', null] } })).toBe(false)
   })
 })

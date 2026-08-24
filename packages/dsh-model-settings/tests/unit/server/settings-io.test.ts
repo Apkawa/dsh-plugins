@@ -3,6 +3,7 @@ import {
   isCandidateRoute,
   planContextWindowWrite,
   planContextWindowOverwrite,
+  planInputOverwrite,
   persistModels,
   persistContextWindow,
   type SettingsStore,
@@ -173,6 +174,43 @@ describe('planContextWindowOverwrite (explicit replace)', () => {
     const res = planContextWindowOverwrite([{ id: 'X', name: 'x' }, { id: 'Y' }], 'Y', 100)
     expect(res.changed).toBe(true)
     expect(res.models).toEqual([{ id: 'X', name: 'x' }, { id: 'Y', contextWindow: 100 }])
+  })
+})
+
+describe('planInputOverwrite (explicit modality replace)', () => {
+  it('creates a model entry when absent, appending at the end', () => {
+    const res = planInputOverwrite([{ id: 'A' }], 'B', ['text', 'image'])
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'A' }, { id: 'B', input: ['text', 'image'] }])
+  })
+
+  it('fills an entry that has no input yet and preserves sibling fields', () => {
+    const res = planInputOverwrite([{ id: 'X', name: 'x', contextWindow: 8000 }], 'X', ['text', 'image'])
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'X', name: 'x', contextWindow: 8000, input: ['text', 'image'] }])
+  })
+
+  it('replaces an existing different list (e.g. unchecking vision: text-only wins)', () => {
+    const res = planInputOverwrite([{ id: 'A', input: ['text', 'image'] }], 'A', ['text'])
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'A', input: ['text'] }])
+  })
+
+  it('is a no-op when the stored list holds the same set (order-insensitive)', () => {
+    const res = planInputOverwrite([{ id: 'A', input: ['image', 'text'] }], 'A', ['text', 'image'])
+    expect(res.changed).toBe(false)
+    expect(res.models).toEqual([{ id: 'A', input: ['image', 'text'] }])
+  })
+
+  it('treats an empty stored list as absent and fills it', () => {
+    const res = planInputOverwrite([{ id: 'A', input: [] }], 'A', ['text', 'image'])
+    expect(res.changed).toBe(true)
+    expect(res.models).toEqual([{ id: 'A', input: ['text', 'image'] }])
+  })
+
+  it('does not disturb other model entries or their order', () => {
+    const res = planInputOverwrite([{ id: 'X', input: ['text'] }, { id: 'Y' }], 'Z', ['text', 'image'])
+    expect(res.models).toEqual([{ id: 'X', input: ['text'] }, { id: 'Y' }, { id: 'Z', input: ['text', 'image'] }])
   })
 })
 

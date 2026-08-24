@@ -40,11 +40,13 @@ class FakeListingFetcher implements Fetcher {
   }
 }
 
-/** Build a listing entry with an INI preset carrying `ctx-size = n`. */
-function entry(id: string, ctxSize?: number): ModelEntry {
+/** Build a listing entry with an INI preset carrying `ctx-size = n` and optional `architecture.input_modalities`. */
+function entry(id: string, ctxSize?: number, inputModalities?: string[]): ModelEntry {
   const lines = ['jinja = 1']
   if (ctxSize !== undefined) lines.push(`ctx-size = ${ctxSize}`)
-  return { id, status: { preset: lines.join('\n') } }
+  const e: ModelEntry = { id, status: { preset: lines.join('\n') } }
+  if (inputModalities !== undefined) e.architecture = { input_modalities: inputModalities }
+  return e
 }
 
 function sectionWith(routeId: string, api: string, baseURL: string, modelIds: string[]): LlmSection {
@@ -79,17 +81,25 @@ describe('autofill', () => {
     expect(models.every(m => m.contextWindow === 90000)).toBe(true)
   })
 
-  it('is idempotent: a fully-sized route is not re-listed on the next round', async () => {
-    const store = new FakeStore(sectionWith('r', 'openai-completions', 'http://h', ['m1']))
+  it('is idempotent: a fully settled route (ctx + explicit input) is not re-listed', async () => {
+    const settled = sectionWith('r', 'openai-completions', 'http://h', ['m1'])
+    settled.providers!.r!.models![0] = { id: 'm1', contextWindow: 120000, input: ['text'] }
+    const store = new FakeStore(settled)
     const fetcher = new FakeListingFetcher([entry('m1', 120064)])
     await autofill({ store, fetcher })
-    expect(store.section.providers?.['r']?.models).toEqual([{ id: 'm1', contextWindow: 120000 }])
-    // second round over the same (now sized) section: nothing to do
-    const fetchesAfterFirst = fetcher.fetchCount
-    const writesAfterFirst = store.writeCount
+    expect(fetcher.fetchCount).toBe(0) // self-cycle guard: nothing to fetch
+    expect(store.writeCount).toBe(0)
+  })
+
+  it('re-lists a sized route with no explicit input (re-probe cost) but writes nothing', async () => {
+    const s = sectionWith('r', 'openai-completions', 'http://h', ['m1'])
+    s.providers!.r!.models![0] = { id: 'm1', contextWindow: 120000 }
+    const store = new FakeStore(s)
+    const fetcher = new FakeListingFetcher([entry('m1', 120064)]) // no input_modalities
     await autofill({ store, fetcher })
-    expect(fetcher.fetchCount).toBe(fetchesAfterFirst) // no new listing (self-cycle guard)
-    expect(store.writeCount).toBe(writesAfterFirst) // no new writes
+    expect(fetcher.fetchCount).toBe(1) // the unsettled route is re-listed
+    expect(store.writeCount).toBe(0) // but nothing new is written
+    expect(store.section.providers?.['r']?.models).toEqual([{ id: 'm1', contextWindow: 120000 }])
   })
 
   it('lets a failing listing throw (visible error for debugging; suppressed at watcher level)', async () => {
@@ -106,5 +116,56 @@ describe('autofill', () => {
     await autofill({ store, fetcher })
     expect(store.writeCount).toBe(0)
     expect(store.section.providers?.['r']?.models).toEqual([{ id: 'm1' }] as LlmModelEntry[])
+  })
+})
+
+describe('autofill (vision input from architecture.input_modalities)', () => {
+  it('fills input for models the listing declares vision-capable and leaves text-only models alone', async () => {
+    const store = new FakeStore(sectionWith('r', 'openai-completions', 'http://h', ['m1', 'm2']))
+    const fetcher = new FakeListingFetcher([entry('m1', 120064, ['text', 'image']), entry('m2', 80000, ['text'])])
+    await autofill({ store, fetcher })
+    const models = store.section.providers?.['r']?.models ?? []
+    expect(models).toEqual([
+      { id: 'm1', contextWindow: 120000, input: ['text', 'image'] },
+      { id: 'm2', contextWindow: 80000 },
+    ])
+  })
+
+  it('combines the ctx and input parts in one write per model', async () => {
+    const store = new FakeStore(sectionWith('r', 'openai-completions', 'http://h', ['m1']))
+    const fetcher = new FakeListingFetcher([entry('m1', 120064, ['text', 'image'])])
+    await autofill({ store, fetcher })
+    expect(store.writeCount).toBe(1) // one revision bump, not two
+    expect(store.section.providers?.['r']?.models).toEqual([{ id: 'm1', contextWindow: 120000, input: ['text', 'image'] }])
+  })
+
+  it('never touches a model that already has an explicit input (user override)', async () => {
+    const s = sectionWith('r', 'openai-completions', 'http://h', ['m1', 'm2'])
+    s.providers!.r!.models![0] = { id: 'm1', input: ['text'] } // unchecked in the UI
+    s.providers!.r!.models![1] = { id: 'm2', input: ['text', 'image'] } // checked in the UI
+    const store = new FakeStore(s)
+    const fetcher = new FakeListingFetcher([entry('m1', 120064, ['text', 'image']), entry('m2', 80000, ['text'])])
+    await autofill({ store, fetcher })
+    const models = store.section.providers?.['r']?.models ?? []
+    expect(models[0]).toEqual({ id: 'm1', input: ['text'], contextWindow: 120000 }) // explicit text-only stands; ctx still filled
+    expect(models[1]).toEqual({ id: 'm2', input: ['text', 'image'], contextWindow: 80000 }) // explicit vision stands
+  })
+
+  it('never writes input when the listing reports no input_modalities', async () => {
+    const store = new FakeStore(sectionWith('r', 'openai-completions', 'http://h', ['m1']))
+    const fetcher = new FakeListingFetcher([entry('m1', 120064)]) // llama.cpp without modality info
+    await autofill({ store, fetcher })
+    expect(store.section.providers?.['r']?.models).toEqual([{ id: 'm1', contextWindow: 120000 }])
+  })
+
+  it('ignores malformed input_modalities (non-array, non-string entries)', async () => {
+    const store = new FakeStore(sectionWith('r', 'openai-completions', 'http://h', ['m1', 'm2']))
+    const fetcher = new FakeListingFetcher([
+      { id: 'm1', architecture: { input_modalities: 'image' } },
+      { id: 'm2', architecture: { input_modalities: [1, 2] } },
+    ])
+    await autofill({ store, fetcher })
+    expect(store.section.providers?.['r']?.models).toEqual([{ id: 'm1' }, { id: 'm2' }] as LlmModelEntry[])
+    expect(store.writeCount).toBe(0)
   })
 })

@@ -6,6 +6,8 @@
  */
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
+import { createServer } from 'node:http'
+import type { Server } from 'node:http'
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +29,7 @@ export interface ModelRow {
   modelId: string
   contextWindow?: number | null
   efforts?: Record<string, string>
+  input?: string[]
 }
 
 interface RpcResult<T> { ok: boolean; value?: T; error?: { code: string; message: string } }
@@ -34,7 +37,7 @@ interface RpcResult<T> { ok: boolean; value?: T; error?: { code: string; message
 /** A running e2e instance plus the child that owns it (for teardown). */
 export interface DshHandle { url: string; port: number; root: string; child: ChildProcess }
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 let rpcSeq = 0
 
 /** Spawn the launcher and wait for its ready line + temp-root line. */
@@ -118,6 +121,29 @@ export async function warmModel(handle: DshHandle, routeId: string = ROUTE_ID, m
 /** Find a row by (routeId, modelId); undefined when absent. */
 export function findRow(rows: readonly ModelRow[] | undefined, routeId: string, modelId: string): ModelRow | undefined {
   return (rows ?? []).find(row => row.routeId === routeId && row.modelId === modelId)
+}
+
+/** Replace the instance's settings.yaml (the watcher re-reads on file changes). */
+export function writeSettings(handle: DshHandle, yaml: string): void {
+  writeFileSync(join(handle.root, '.dsh', 'settings.yaml'), yaml)
+}
+
+/**
+ * A local HTTP server that answers every request with a fixed JSON body — a
+ * stand-in for a llama.cpp instance (no internet; 127.0.0.1 only).
+ */
+export async function startJsonServer(body: string): Promise<{ url: string; stop: () => Promise<void> }> {
+  const server: Server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(body)
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('json server has no TCP address')
+  return { url: `http://127.0.0.1:${address.port}`, stop: () => new Promise(resolve => server.close(() => resolve())) }
 }
 
 function onceExit(proc: ChildProcess): Promise<number | null> {

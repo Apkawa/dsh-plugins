@@ -5,12 +5,14 @@
  * settings seam directly. The store is constructed in the composition root.
  */
 
-/** One entry of a route's `models` list. Only `id` and `contextWindow` are ours; the rest are preserved opaquely. */
+/** One entry of a route's `models` list. `id`, `contextWindow`, and `input` are ours; the rest are preserved opaquely. */
 export interface LlmModelEntry {
   id: string
   /** Context capacity; a positive integer once set by the user or by us. */
   contextWindow?: number
-  /** Fields we do not model (name, maxTokens, input, …) are carried through unchanged. */
+  /** Input modalities (`text`, `image`); set by the UI checkbox or autofill. An empty list means absent. */
+  input?: string[]
+  /** Fields we do not model (name, maxTokens, …) are carried through unchanged. */
   [key: string]: unknown
 }
 
@@ -105,6 +107,33 @@ export function planContextWindowOverwrite(models: readonly LlmModelEntry[], mod
   const existing = models[index]
   if (existing !== undefined && existing.contextWindow === value) return { models: [...models], changed: false }
   const next = models.map((m, i) => (i === index ? { ...m, contextWindow: value } : m))
+  return { models: next, changed: true }
+}
+
+/** True for two modality lists that hold the same entries, order-insensitive. */
+function sameModalitySet(a: readonly string[], b: readonly string[]): boolean {
+  const sortedA = [...a].sort()
+  const sortedB = [...b].sort()
+  return sortedA.length === sortedB.length && sortedA.every((m, i) => m === sortedB[i])
+}
+
+/**
+ * Plan how one model's `input` list changes when the caller explicitly asks to
+ * replace it (the vision checkbox's save path). Unlike {@link planContextWindowWrite},
+ * a stored list is NOT a user override here — it is overwritten; a stored list
+ * that already holds the same set needs no write. An absent entry is created as
+ * `{ id, input }`. @param models - the route's current models list.
+ * @param modelId - the model to replace the list for.
+ * @param input - the modality list to store.
+ */
+export function planInputOverwrite(models: readonly LlmModelEntry[], modelId: string, input: readonly string[]): PlanResult {
+  const index = models.findIndex(m => m.id === modelId)
+  if (index === -1) return { models: [...models, { id: modelId, input: [...input] }], changed: true }
+  const existing = models[index]
+  if (existing !== undefined && Array.isArray(existing.input) && sameModalitySet(existing.input, input)) {
+    return { models: [...models], changed: false }
+  }
+  const next = models.map((m, i) => (i === index ? { ...m, input: [...input] } : m))
   return { models: next, changed: true }
 }
 

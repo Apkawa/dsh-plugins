@@ -1,11 +1,11 @@
 /**
  * The reasoning settings section (browser half): lists each OpenAI-compatible
- * route's models as a card. Every model row carries its context-window field,
- * a refresh control (re-read from the live llama.cpp listing) and one Save that
- * commits the context window and the per-level thinking mapping together; the
- * level editor folds behind a collapsed <details> accordion. The component holds
- * no settings or RPC logic of its own — it drafts locally and posts through the
- * controller face.
+ * route's models as a card. Every model row carries its context-window field, a
+ * vision-input checkbox, a refresh control (re-read from the live llama.cpp
+ * listing) and one Save that commits the context window, the input, and the
+ * per-level thinking mapping together; the level editor folds behind a collapsed
+ * <details> accordion. The component holds no settings or RPC logic of its own —
+ * it drafts locally and posts through the controller face.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -13,6 +13,7 @@ import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { THINKING_LEVELS, type ReasoningEfforts, type ReasoningRow, type ReasoningSectionFace } from './reasoning-controller.ts'
 import { draftsDirty, draftsFromEfforts, effortsFromDrafts, validateEffortsClient, type LevelDraft } from './efforts-editor.ts'
 import { formatContextWindow, parseContextWindow } from './context-format.ts'
+import { hasVisionInput, inputForVision } from './vision-input.ts'
 import css from './reasoning-section.module.css'
 
 /** The composed props the slot dispatcher hands the section. */
@@ -97,6 +98,11 @@ function ModelRow({
   // stored mapping only while the editor is clean, so a stale draft can never
   // overwrite an externally changed mapping on Save.
   const levelsDirty = useRef(false)
+  // The vision checkbox holds the stored state (checked ⇔ the stored input list
+  // declares image) while clean; a moved checkbox keeps its own state until a
+  // save commits it, mirroring the level editor's ownership rule.
+  const [vision, setVision] = useState(() => hasVisionInput(row.input))
+  const visionDirty = useRef(false)
 
   // Focus-aware sync: after a save/refresh re-lists the rows, adopt the stored
   // value into the draft — but only while the field is unfocused.
@@ -112,6 +118,13 @@ function ModelRow({
     if (levelsDirty.current) return
     setDrafts(draftsFromEfforts(row.efforts))
   }, [row.efforts])
+
+  // Re-list aware sync for the checkbox, mirroring the level editor: adopt the
+  // stored state while the checkbox is clean.
+  useEffect(() => {
+    if (visionDirty.current) return
+    setVision(hasVisionInput(row.input))
+  }, [row.input])
 
   /** Read one level's draft (all seven are always present after init). */
   function draftFor(level: string): LevelDraft {
@@ -159,14 +172,20 @@ function ModelRow({
     } else if (ctxDraft === '' && row.contextWindow !== undefined) {
       contextWindow = null // the clear
     }
+    // The checkbox commits whenever it differs from the stored state: a check
+    // writes [text, image], an uncheck writes the explicit text-only [text] (the
+    // key is never absent, so autofill cannot re-check a deliberate un-vision).
+    // An untouched checkbox leaves the stored list alone.
+    const inputPart = vision !== hasVisionInput(row.input) ? inputForVision(vision) : undefined
     setError(undefined)
     setSaving(true)
     try {
-      await save(row.routeId, row.modelId, effortsPart, contextWindow)
+      await save(row.routeId, row.modelId, effortsPart, contextWindow, inputPart)
       // The editor is user-owned only while it carries uncommitted changes: a
       // committed save releases it, and a ctx-only save releases it when the
       // editor actually matches the stored mapping (nothing pending).
       if (effortsPart !== undefined || !draftsDirty(drafts, row.efforts)) levelsDirty.current = false
+      if (inputPart !== undefined || vision === hasVisionInput(row.input)) visionDirty.current = false
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -188,12 +207,13 @@ function ModelRow({
 
   // Save is available once there is something to commit: a changed level editor
   // (a mapping, or the clearing of every stored level), a new context-window
-  // value, or the clearing of a stored one. An untouched row stays disabled;
-  // "no change" means the part is omitted.
+  // value, the clearing of a stored one, or a moved vision checkbox. An
+  // untouched row stays disabled; "no change" means the part is omitted.
   const parsedCtx = parseContextWindow(ctxDraft)
   const ctxWriting = parsedCtx !== undefined && parsedCtx !== row.contextWindow
   const ctxClearing = ctxDraft === '' && row.contextWindow !== undefined
-  const canSave = draftsDirty(drafts, row.efforts) || ctxWriting || ctxClearing
+  const visionWriting = vision !== hasVisionInput(row.input)
+  const canSave = draftsDirty(drafts, row.efforts) || ctxWriting || ctxClearing || visionWriting
 
   return (
     <div className={css.modelRow}>
@@ -218,6 +238,17 @@ function ModelRow({
           onBlur={() => { ctxFocused.current = false }}
           onChange={e => setCtxDraft(e.target.value)}
         />
+      </label>
+      <label className={css.visionRow} title="Checked, the model is saved with input [text, image]; unchecked, with the explicit text-only [text]">
+        <input
+          type="checkbox"
+          checked={vision}
+          onChange={e => {
+            visionDirty.current = true
+            setVision(e.target.checked)
+          }}
+        />
+        <span className={css.visionName}>Vision</span>
       </label>
       {error !== undefined && (
         <p className={css.errorNotice} role="alert">{error}</p>

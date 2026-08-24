@@ -32,15 +32,29 @@ jinja = 1
 ...
 ```
 
+Entries also carry a top-level `architecture` object; a vision-capable entry lists
+its input modalities there:
+
+```json
+{ "id": "ModelName", "architecture": { "input_modalities": ["text", "image"] }, "status": { "preset": "..." } }
+```
+
+Not every endpoint reports it (older llama.cpp builds, proxies) — its absence is
+the norm and means "unknown", not "text-only".
+
 Our modules:
 - `src/probe.ts` — `fetchModels(fetcher, baseURL, options?)`: GET + bounded read + parse.
   **Throws** on any failure (network, timeout, non-2xx, oversized, malformed). The
   `modelsUrl` helper handles both base spellings (with/without trailing `/v1`).
 - `src/props.ts` — `parsePreset(entry)` / `contextWindowFromEntry(entry)`: extract the
-  context size from the INI preset.
-- `src/autofill.ts` — batch autofill: for each candidate route, fetch once, fill every
-  unsized model's `contextWindow` (rounded down). Self-cycle guard: a route whose models
-  are all sized is skipped entirely.
+  context size from the INI preset; `entrySupportsVision(entry)`: true only for a
+  non-empty `architecture.input_modalities` string array containing `image`.
+- `src/autofill.ts` — batch autofill: for each candidate route, fetch once and fill
+  whatever a model lacks — its `contextWindow` (rounded down, when unsized) and its
+  `input` of `["text", "image"]` (when the listing declares vision and the model has
+  no explicit list yet). Self-cycle guard: a route whose models are all sized **and**
+  have an explicit `input` is skipped; an endpoint without modality info stays
+  unsettled and is re-listed (but never re-written) on every settings commit.
 
 **Pitfall hit**: the real baseURL was `http://host:8080/v1` (already includes `/v1`).
 Naively appending `/v1/models` produced `.../v1/v1/models` → 404. Fixed in `modelsUrl`.
@@ -149,9 +163,18 @@ Discovered by trial and error against dsh's runtime validation; read these first
   `entry.contextWindow ?? base?.contextWindow ?? request.defaultContextWindow` (`catalog.ts:510`) —
   an **absent key is legal**. Clearing = drop the key from the entry. Reasoning resolution lives in
   `resolveModelReasoning` (~315–365) in the same file.
-- Our channel's wire contract (one Save commits both parts): `saveModel({routeId, modelId,
-  efforts?, contextWindow?})` — `efforts:{}` → clear the mapping (host stores `false`);
-  `contextWindow:null` → drop the key; an absent part = untouched.
+- `input` (per model): zod `z.array(z.union(MODALITIES))` where the modalities are
+  exactly `text | image` (`config.ts` / `catalog.ts:42–48`). Resolution is
+  `declaredInput(entry.input) ?? base?.input ?? [...request.defaultInput]`
+  (`catalog.ts:533`) — an **absent key is legal** (falls back to the route's
+  `defaultInput`, which defaults to `["text"]`). Our checkbox convention: checked ⇔ the
+  stored list contains `image`; check writes `["text", "image"]`, uncheck writes the
+  explicit `["text"]` — the key is never dropped, so autofill can never re-check a
+  deliberately un-visioned model, and `["text"]` beats the route `defaultInput`.
+- Our channel's wire contract (one Save commits all parts): `saveModel({routeId, modelId,
+  efforts?, contextWindow?, input?})` — `efforts:{}` → clear the mapping (host stores `false`);
+  `contextWindow:null` → drop the key; `input` must be a non-empty subset of `["text", "image"]`;
+  an absent part = untouched.
 
 ## 10. Host/client version skew + probing
 

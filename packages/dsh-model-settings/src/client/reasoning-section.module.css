@@ -120,6 +120,24 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The vision checkbox: a plain checkbox + caption row, mirroring the level rows. */
+.visionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.visionRow input[type='checkbox'] {
+  accent-color: var(--dsw-alias-brand-primary);
+}
+
+.visionName {
+  color: var(--dsw-alias-label-secondary);
+}
+
 .saveButton,
 .secondaryButton {
   box-sizing: border-box;
@@ -169,6 +187,7 @@
 }
 
 .ctxInput:focus-visible,
+.visionRow input[type='checkbox']:focus-visible,
 .wireInput:focus-visible,
 .saveButton:focus-visible,
 .secondaryButton:focus-visible,

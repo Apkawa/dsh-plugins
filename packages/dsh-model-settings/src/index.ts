@@ -101,20 +101,28 @@ function listModelRows(store: SettingsStore): Array<{ routeId: string; modelId: 
   return rows
 }
 
-/** The rows the v2 settings section lists: every candidate route's models with their current reasoningEfforts and contextWindow. */
-function listReasoningRows(store: SettingsStore): Array<{ routeId: string; modelId: string; contextWindow?: number; efforts?: ReasoningEfforts }> {
+/** The rows the v2 settings section lists: every candidate route's models with their current reasoningEfforts, contextWindow, and input. */
+function listReasoningRows(store: SettingsStore): Array<{ routeId: string; modelId: string; contextWindow?: number; efforts?: ReasoningEfforts; input?: string[] }> {
   const section = store.read().value
-  const rows: Array<{ routeId: string; modelId: string; contextWindow?: number; efforts?: ReasoningEfforts }> = []
+  const rows: Array<{ routeId: string; modelId: string; contextWindow?: number; efforts?: ReasoningEfforts; input?: string[] }> = []
   for (const [routeId, route] of Object.entries(section.providers ?? {})) {
     if (!isCandidateRoute(route)) continue
     for (const model of route.models ?? []) {
       // `false` is dsh's explicit non-reasoning spelling (our clear); only a mapping object is shown as levels.
       const raw = model.reasoningEfforts
       const efforts = typeof raw === 'object' && raw !== null ? (raw as ReasoningEfforts) : undefined
-      rows.push({ routeId, modelId: model.id, ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}), ...(efforts !== undefined ? { efforts } : {}) })
+      // Only an array of strings counts as a stored modality list; anything else is shown as absent.
+      const input = Array.isArray(model.input) ? model.input : undefined
+      rows.push({ routeId, modelId: model.id, ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}), ...(efforts !== undefined ? { efforts } : {}), ...(input !== undefined ? { input } : {}) })
     }
   }
   return rows
+}
+
+/** True for a non-empty list of dsh input modalities restricted to the `text`/`image` set. */
+function isInputList(value: unknown): value is string[] {
+  if (!Array.isArray(value) || value.length === 0) return false
+  return value.every(modality => modality === 'text' || modality === 'image')
 }
 
 /** Resolve one route's probe inputs from the section; a missing route or base throws. */
@@ -159,9 +167,11 @@ export function makeRpcHandler(store: SettingsStore, fetcher: Fetcher = producti
           return { ok: true, value: listReasoningRows(store) }
         case 'saveModel': {
           // `null` is the clear part (drop the stored value); an absent part is untouched.
-          const p = payload as { routeId?: string; modelId?: string; efforts?: ReasoningEfforts; contextWindow?: number | null }
+          const p = payload as { routeId?: string; modelId?: string; efforts?: ReasoningEfforts; contextWindow?: number | null; input?: string[] }
           if (p?.routeId === undefined || p.modelId === undefined) return rpcFailure('bad-request', 'saveModel requires routeId and modelId', { issues: [] })
-          if (p.efforts === undefined && p.contextWindow === undefined) return rpcFailure('bad-request', 'saveModel requires efforts or contextWindow', { issues: [] })
+          if (p.efforts === undefined && p.contextWindow === undefined && p.input === undefined) {
+            return rpcFailure('bad-request', 'saveModel requires efforts, contextWindow, or input', { issues: [] })
+          }
           if (p.efforts !== undefined) {
             const errors = validateEfforts(p.efforts)
             if (errors.length > 0) return rpcFailure('bad-request', errors.join('; '), { issues: [] })
@@ -169,9 +179,13 @@ export function makeRpcHandler(store: SettingsStore, fetcher: Fetcher = producti
           if (typeof p.contextWindow === 'number' && (!Number.isInteger(p.contextWindow) || p.contextWindow <= 0)) {
             return rpcFailure('bad-request', 'contextWindow must be a positive integer', { issues: [] })
           }
+          if (p.input !== undefined && !isInputList(p.input)) {
+            return rpcFailure('bad-request', 'input must be a non-empty list of "text"/"image" modalities', { issues: [] })
+          }
           const parts: ModelSaveParts = {}
           if (p.efforts !== undefined) parts.efforts = p.efforts
           if (p.contextWindow !== undefined) parts.contextWindow = p.contextWindow
+          if (p.input !== undefined) parts.input = p.input
           await persistModelSave(store, p.routeId, p.modelId, parts)
           return { ok: true, value: null }
         }

@@ -1,15 +1,16 @@
 /**
- * One commit for the two fields the v2 settings section edits together: a
- * model's `contextWindow` (explicit overwrite) and its `reasoningEfforts`
- * mapping. Composes the two existing pure planners — {@link planContextWindowOverwrite}
- * and {@link planReasoningWrite} — into a single planned models list, so one
- * Save is one revision-fenced write. Lives in its own module (rather than in
- * settings-io) because it depends on both siblings; the store seam, the fencing
- * and the retry rule are the same as everywhere else in this package.
+ * One commit for the fields the v2 settings section edits together: a model's
+ * `contextWindow` (explicit overwrite), its `reasoningEfforts` mapping, and its
+ * `input` modality list. Composes the pure planners — {@link planContextWindowOverwrite},
+ * {@link planReasoningWrite}, and {@link planInputOverwrite} — into a single
+ * planned models list, so one Save is one revision-fenced write. Lives in its
+ * own module (rather than in settings-io) because it depends on both siblings;
+ * the store seam, the fencing and the retry rule are the same as everywhere
+ * else in this package.
  */
 
 import { planReasoningWrite, type ReasoningEfforts } from './efforts.ts'
-import { planContextWindowOverwrite, type LlmModelEntry, type SettingsStore } from './settings-io.ts'
+import { planContextWindowOverwrite, planInputOverwrite, type LlmModelEntry, type SettingsStore } from './settings-io.ts'
 
 /** The parts of one model a Save may commit; an absent part is left untouched. */
 export interface ModelSaveParts {
@@ -17,6 +18,8 @@ export interface ModelSaveParts {
   efforts?: ReasoningEfforts
   /** The contextWindow to store (explicit overwrite); omitted leaves the stored value as-is. `null` clears it. */
   contextWindow?: number | null
+  /** The `input` modality list to store (explicit overwrite); omitted leaves the stored list as-is. */
+  input?: string[]
 }
 
 /** The outcome of planning one model's combined save. */
@@ -49,6 +52,11 @@ export function planModelSave(models: readonly LlmModelEntry[], modelId: string,
     const efforts = planReasoningWrite(current, modelId, parts.efforts)
     current = efforts.models
     changed = changed || efforts.changed
+  }
+  if (parts.input !== undefined) {
+    const input = planInputOverwrite(current, modelId, parts.input)
+    current = input.models
+    changed = changed || input.changed
   }
   return { models: current, changed }
 }
