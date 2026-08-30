@@ -30,9 +30,8 @@
    провайдера (deepseek + ddgs), dsh требует явного выбора
    (`DSH_WEB_SEARCH_PROVIDER=ddgs` или `searchProvider: ddgs`). Сейчас deepseek
    unavailable (нет ключа) — автовыбор ddgs работает сам.
-6. npm-реестр и github недостижимы → новый пакет использует только уже
-   установленные в workspace зависимости (cordis 4.0.1, schemastery 3.18.1,
-   typescript, vitest, tsdown). Типы web-seam объявляются локально в пакете.
+6. npm-реестр доступен (интернет вернулся): типы web-seam — types-only
+   devDependency `@deepseek-ai/dsh-web` (rc.2), без рантайм-зависимости.
 
 ## Компоненты
 
@@ -52,7 +51,7 @@
 
 | Поле | По умолчанию | Назначение |
 | ---- | ------------ | ---------- |
-| `backend` | `yandex` | бэкенд ddgs (`-b`) |
+| `backend` | `duckduckgo` | бэкенд ddgs (`-b`) — интернет вернулся; yandex остаётся опцией (выключен upstream, включается инъекцией) |
 | `maxResults` | `8` | лимит источников (совпадает с `WEB_SEARCH_MAX_RESULTS` dsh) |
 | `timeoutMs` | `30_000` | таймаут на один поиск (subprocess) |
 | `venvDir` | `~/.cache/dsh-web-search-ddgs/venv` | каталог управляемого uv-venv |
@@ -99,8 +98,8 @@ Exit 0 = JSON; non-zero = `DDGSException: <msg>` на stderr.
 - **Без API-ключа** (по условию): brave/google и т.д. не включаются.
 - **Выбор провайдера** при двух пригодных провайдерах — вручную
   (env/config), плагин сам ничего не решает.
-- **Типы seam декларированы локально** — если `@deepseek-ai/dsh-web`
-  станет доступен в реестре, заменить на импорт.
+- **Типы seam** — types-only `@deepseek-ai/dsh-web` (rc.2); рантайм-совместимость
+  не зависит от версии (структурный интерфейс).
 - **Почему yandex выключен upstream — неизвестно** (github недостижим);
   учтено как риск хрупкости, заложенный в пределы выше.
 
