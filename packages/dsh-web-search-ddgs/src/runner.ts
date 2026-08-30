@@ -19,7 +19,7 @@ export interface SearchParams {
   backend: string
   maxResults: number
   /** Host-side cancellation (forwarded from the WebSearchProvider signal). */
-  signal?: AbortSignal
+  signal?: AbortSignal | undefined
 }
 
 export interface RunnerOptions {
@@ -65,7 +65,7 @@ export function createRunner(options: RunnerOptions, spawner: Spawner = runComma
   }
 
   async function uv(args0: string, rest: string[]): Promise<void> {
-    const outcome = await spawner('uv', [args0, ...rest])
+    const outcome = await spawner('uv', [args0, ...rest], {})
     if (outcome.code !== 0) throw new Error(`uv ${args0} failed: ${outcome.stderr.trim() || outcome.stdout.trim() || `exit ${outcome.code}`}`)
   }
 

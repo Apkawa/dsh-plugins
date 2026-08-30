@@ -1,5 +1,10 @@
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-web'
 import z from '@deepseek-ai/schemastery'
+import { DdgsSearchProvider, DEFAULT_BACKEND, DEFAULT_MAX_RESULTS, DEFAULT_TIMEOUT_MS } from './provider.ts'
+import { createRunner, DEFAULT_SCRIPT_PATH } from './runner.ts'
 
 export const name = 'web-search-ddgs'
 
@@ -15,7 +20,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  /** ddgs search backend (default: yandex — the only one reachable on the author's whitelist). */
+  /** ddgs search backend (default: duckduckgo). */
   backend: z.string(),
   /** Max sources per query (default: 8, matching dsh's web_search tool default). */
   maxResults: z.number().step(1).min(1),
@@ -27,6 +32,21 @@ export const Config: z<Config> = z.object({
   ddgsVersion: z.string(),
 })
 
-export function apply(_ctx: Context, _config: Config): void {
-  // The provider registration lands with the DdgsSearchProvider stage.
+/** Default managed-venv location (POSIX). */
+export const DEFAULT_VENV_DIR = join(homedir(), '.cache', 'dsh-web-search-ddgs', 'venv')
+
+export function apply(ctx: Context, config: Config): void {
+  const venvDir = config.venvDir ?? DEFAULT_VENV_DIR
+  const runner = createRunner({
+    venvDir,
+    ddgsVersion: config.ddgsVersion ?? 'ddgs',
+    scriptPath: DEFAULT_SCRIPT_PATH,
+    timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  })
+  ctx.web.registerSearchProvider(new DdgsSearchProvider({
+    runner,
+    venvDir,
+    backend: config.backend ?? DEFAULT_BACKEND,
+    maxResults: config.maxResults ?? DEFAULT_MAX_RESULTS,
+  }))
 }
