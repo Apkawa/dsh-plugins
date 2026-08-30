@@ -1,0 +1,6 @@
+# The web-search-ddgs bundle patch: mounts the plugin row into any profile that
+# installs this package. The host half registers a ddgs-backed search provider
+# (default backend: yandex, run through a managed uv venv) into the ctx.web seam.
+- insert:
+    - id: web-search-ddgs
+      name: '@apkawa/dsh-web-search-ddgs'
