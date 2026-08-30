@@ -4,3 +4,4 @@ lib
 *.tsbuildinfo
 dist
 examples/tmp/
+.npm-cache
