@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { WebSearchProvider, WebSearchRequest, WebSearchResult, WebSearchSource } from '@deepseek-ai/dsh-web'
+import { dbg } from './log.ts'
 import type { DdgsItem, DdgsRunner, SearchParams } from './runner.ts'
 
 export const PROVIDER_ID = 'ddgs'
@@ -28,7 +29,10 @@ export class DdgsSearchProvider implements WebSearchProvider {
 
   /** Cheap local check, no network: the venv exists, or uv can provision it. */
   available(): boolean {
-    return existsSync(join(this.options.venvDir, 'bin', 'python')) || onPath('uv')
+    const venvReady = existsSync(join(this.options.venvDir, 'bin', 'python'))
+    const uvOnPath = !venvReady && onPath('uv')
+    dbg.log('available:', venvReady || uvOnPath, venvReady ? '(venv ready)' : uvOnPath ? '(uv on PATH)' : '(no venv, no uv)')
+    return venvReady || uvOnPath
   }
 
   search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
@@ -38,9 +42,14 @@ export class DdgsSearchProvider implements WebSearchProvider {
       maxResults: request.maxResults ?? this.options.maxResults,
       signal,
     }
+    dbg.log('search:', params.query, 'backend:', params.backend, 'maxResults:', params.maxResults)
     const task = this.queue.then(() => this.options.runner.search(params))
     this.queue = task.then(() => undefined, () => undefined)
-    return task.then(result => ({ sources: toSources(result.items), truncated: false }))
+    return task
+      .then(result => {
+        dbg.log('search ok:', result.items.length, 'items')
+        return { sources: toSources(result.items), truncated: false }
+      })
   }
 }
 
