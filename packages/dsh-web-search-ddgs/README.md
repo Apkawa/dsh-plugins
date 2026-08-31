@@ -22,8 +22,11 @@ provider uses — so the `web_search` tool runs on
    ```
 
    (`dsh plugin` forwards to `pnpm` in the profile directory.)
-3. `uv` must be on `PATH` — it provisions the managed venv on first search.
-4. Restart `dsh web` (host-side plugin: a full restart is required, not a page reload).
+3. Point `web_search` at the provider — see [Provider selection](#provider-selection).
+   Without this, the stock web profile keeps its `deepseek-official` pin and the
+   `ddgs` provider is registered but never selected.
+4. `uv` must be on `PATH` — it provisions the managed venv on first search.
+5. Restart `dsh web` (host-side plugin: a full restart is required, not a page reload).
 
 ## Configuration
 
@@ -39,19 +42,43 @@ Plugin config (`web-search-ddgs` section in dsh settings):
 
 ## Provider selection
 
-The `ctx.web` seam resolves the provider at call time:
+The `ctx.web` seam resolves the provider at call time. A configured id wins —
+`searchProvider` from the `web` service config, falling back to the
+`DSH_WEB_SEARCH_PROVIDER` env var only while the config field is unset. With
+no configured id, exactly one usable registered provider is auto-selected;
+several usable ones give `WEB_PROVIDER_AMBIGUOUS`.
 
-- exactly one usable provider → auto-selected (typical case when DeepSeek's key is absent);
-- several usable providers → `WEB_PROVIDER_AMBIGUOUS` — pin explicitly:
+In practice the stock `web` profile needs an explicit pin, for two reasons:
 
-  ```sh
-  export DSH_WEB_SEARCH_PROVIDER=ddgs
-  ```
+- `dsh-base` sets `searchProvider: deepseek-official` in the `web` service
+  config — config beats env, so `export DSH_WEB_SEARCH_PROVIDER=ddgs` alone
+  does **not** override the pin.
+- The built-in DeepSeek provider reports `available()` even without a key (the
+  key is resolved at search time), so it stays selected and `web_search` then
+  fails with a missing-key error.
 
-  (`DSH_WEB_SEARCH_PROVIDER` / `fetchProvider` are the seam's own config fields, not a hidden priority chain.)
-- a configured id that is registered but unavailable → `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`.
+The sanctioned override is the profile's own patch layer, applied after every
+bundle layer:
 
-`available()` is cheap and local (no network): true when the venv exists or `uv` is on `PATH` — the venv can be provisioned.
+```yaml
+# ~/.dsh/profiles/web/cordis.patch.yml
+- id: web
+  config:
+    searchProvider: ddgs
+```
+
+The entry replaces the `web` service config map, so keep any other needed keys
+(e.g. `fetchProvider: http` for `web_fetch`) in the same entry, then restart
+`dsh web`.
+
+`available()` here is cheap and local (no network): true when the venv exists
+or `uv` is on `PATH` — the venv can be provisioned.
+
+## Debugging
+
+Run `dsh web` with `DEBUG=1` for `[web-search-ddgs]` log lines: plugin
+apply/registration, provider availability, the managed-`uv` calls during venv
+provisioning, and each search (`search:` … `search ok: N items`).
 
 ## Limits and caveats (MVP)
 
