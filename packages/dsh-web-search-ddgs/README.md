@@ -93,3 +93,8 @@ provisioning, and each search (`search:` … `search ok: N items`).
 - `pnpm test:e2e` — live e2e: boots an independent `dsh web` with the plugin linked (boot) and runs a real ddgs search through the real runner (self-skips when `uv` is absent).
 - `pnpm e2e:live` — manually boots a throwaway `dsh web` on a clean home (the e2e launcher; `--keep` preserves the temp root).
 - `pnpm typecheck` — strict tsc over `src/`.
+
+## Development
+
+See [AGENTS.md](./AGENTS.md) for project structure and
+[../../AGENTS.md](../../AGENTS.md) for repo-wide principles + pitfalls.

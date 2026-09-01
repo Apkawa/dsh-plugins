@@ -52,5 +52,6 @@ Logs are quiet by default. Run dsh with `DEBUG=1` to see the plugin's trace outp
 
 ## Development
 
-See [AGENTS.md](../../AGENTS.md) for principles + pitfalls, and
+See [AGENTS.md](./AGENTS.md) for project structure and
+[../../AGENTS.md](../../AGENTS.md) for repo-wide principles + pitfalls, and
 [docs/ai/key-moments.md](../../docs/ai/key-moments.md) for architectural reference.

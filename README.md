@@ -8,6 +8,7 @@ Each plugin lives under `packages/<name>/` and has its own README.
 | Package | What it does |
 |---------|--------------|
 | [`dsh-model-settings`](./packages/dsh-model-settings/) | Per-model reasoning effort, context window, and vision input management (autofill from `/v1/models` INI presets + `architecture.input_modalities`). |
+| [`dsh-web-search-ddgs`](./packages/dsh-web-search-ddgs/) | Keyless `web_search` provider on [ddgs](https://github.com/deedy5/ddgs), run from a managed uv venv. |
 
 ## Install
 
