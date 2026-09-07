@@ -48,8 +48,19 @@ Review decisions: runner `@playwright/test`; keyless mandatory (assert only what
 **Commit:** `test(dsh-model-settings): playwright e2e acceptance green (keyless, dsh 0.1.1-rc.2)`
 
 ## Stage 4 — Refactor + optional second plugin
-- [ ] Refactor: launcher additions stay minimal and reusable across plugin packages (per-package structure as is, no premature shared-package abstraction)
-- [ ] (Optional, only if cheap) `dsh-web-search-ddgs` acceptance test reusing the same helper; otherwise record why it is deferred in the spec
+- [x] Refactor: launcher additions stay minimal and reusable across plugin packages (per-package structure as is, no premature shared-package abstraction) — review verdict: lane already conforms (zero plugin identity in `live.ts`, `packageDir` from file location, no shared-package extraction) → no review-driven changes; separate small fix from the review's follow-up note: the test body now wraps everything after `launchPluginTestHome()` in `try/finally { await home.stop() }` so a failing run no longer leaks the `dsh web` child / temp root
+- [x] (Optional, only if cheap) `dsh-web-search-ddgs` acceptance test reusing the same helper; otherwise record why it is deferred in the spec — **deferred** (spec item 7): host-only plugin (no client half → nothing renderable, absent from `__DSH_BOOT__.entries`), no keyless plugin-specific assertion possible, cost = new devDep + lockfile hand-edit + second config/live.ts copy; lane stays reusable per-package (copy of `live.ts`) if a client half ever exists
 
-**Criterion:** Stage 3 green still passes; optional plugin test green or explicitly deferred with a reason.
+**Criterion:** Stage 3 green still passes; optional plugin test green or explicitly deferred with a reason. — **Accepted**: green verified, deferral recorded.
+**Commit:** `test(dsh-model-settings): stop dsh home on failed test runs, defer ddgs gui e2e`
+
+## Stage 5 — Green: vitest lane on tokenized dsh 0.1.2-rc.1 + unified version selection
+(User: "в новой версии просто добавили токен к урлу, без токена не откроется. т.е. тест дб в сессии." + "я не понял как прокидывается версия dsh".)
+- [ ] Spike: pin down dsh 0.1.2-rc.1 web session semantics empirically — what the tokenized ready URL does, what the plain-URL 303 carries (Set-Cookie?), tokenized GET without/with session; which requests need the session (readiness GET, `/model-settings` RPC POSTs); read the auth code in the dsh source (checkout is at tag `dsh-v0.1.2-rc.1`); confirm the host-side plugin RPC still works on 0.1.2-rc.1 despite the client-module-table loader bug (task `fix_0.1.2-rc1`). Facts → research.md
+- [ ] Fix the launcher (`scripts/e2e-live.mjs`) readiness check: works for both plain ready URLs (0.1.1-rc.2) and tokenized ones (0.1.2+) — establish the session and verify 200 within it; surface the session to the fixture
+- [ ] Make the fixture RPC (`tests/e2e/dsh-fixture.ts`) session-aware: carry the session on `/model-settings` POSTs (no-op on plain-URL versions)
+- [ ] Unify dsh version selection across both e2e lanes: env `E2E_DSH_BIN` → provisioned `.tmp/dsh-versions/0.1.1-rc.2/…/dsh` → PATH `dsh` (same chain as `tests/e2e/live.ts`); document the chain in research.md so "как прокидывается версия dsh" is answerable from the tree
+- [ ] `pnpm test:e2e` (full chain: vitest leg + playwright leg) green in a clean env
+
+**Criterion:** `pnpm test:e2e` fully green (no `DEEPSEEK_API_KEY`, real `~/.dsh` untouched); the vitest leg verified on **both** 0.1.1-rc.2 and 0.1.2-rc.1; both lanes share the same version-selection chain.
 **Commit:**
