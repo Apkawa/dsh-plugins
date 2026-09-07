@@ -72,6 +72,19 @@ Superficial context collection only (dependencies, files, fixed constraints, exi
 - Kill: SIGTERM (background-job kill); port stopped responding (curl → connection refused).
 - Scratch left behind (all under repo `.tmp/`, intended to be kept for Stage 2 reuse): `.tmp/dsh-versions/0.1.1-rc.2/` (provisioned binary), `.tmp/dsh-e2e-spike-1788783884/` (isolated home + `boot.log`), `.tmp/dsh-e2e-spike-boot.sh` (launcher script); store cache at `.cache/pnpm/v11`.
 
+### dsh version selection in the e2e lanes
+
+Both e2e lanes now resolve the dsh binary through the same chain, in the same order:
+
+1. `E2E_DSH_BIN` — an env override; when set it must be an existing file (a missing value is a hard fail naming it), otherwise the chain continues.
+2. The provisioned baseline `<repo>/.tmp/dsh-versions/0.1.1-rc.2/node_modules/.bin/dsh` — when it exists (provisioned above).
+3. `dsh` on PATH — final fallback.
+
+- Playwright lane: `tests/e2e/live.ts` → `resolveDshBinary()` (original implementation of this chain).
+- Vitest lane: `scripts/e2e-live.mjs` → `resolveDshBinary()` (mirrors the same chain; an invalid `E2E_DSH_BIN` fails with a clear message instead of silently falling through, matching the file's `fail()` style). The resolved path is used for the `requireCommand` version check, the `dsh plugin --profile web add` step, and the `dsh web` spawn; the launcher prints a `dsh binary: <path>` line so a run shows which version won.
+- Version semantics: the provisioned baseline is **0.1.1-rc.2** (plain, tokenless ready URL; the plugin RPC fully works). PATH `dsh` here is **0.1.2-rc.1** (tokenized ready URL with the 303/`Set-Cookie` session exchange — handled by both lanes' launchers, which do the exchange and then hit the plain URL with the cookie). The vitest lane's plugin RPC still fails on 0.1.2-rc.1 with the documented 405 (plugin channel never registered — separate task `fix_0.1.2-rc1`), so 0.1.2-rc.1 remains a fallback, not the baseline.
+- On a fresh clone (no `.tmp/dsh-versions`), the chain falls back to PATH `dsh` unchanged.
+
 ### How e2e-live installs the plugin into the test home
 
 - **File naming note:** the brief's `tests/e2e-live.ts` / `tests/e2e-live-utils.ts` no longer exist (Item 1 above predates a rename). Current layout: launcher = `packages/dsh-model-settings/scripts/e2e-live.mjs`, fixture = `packages/dsh-model-settings/tests/e2e/dsh-fixture.ts`, test = `packages/dsh-model-settings/tests/e2e/server/model-settings.test.ts` (run via `pnpm test:e2e` → `vitest run --config vitest.e2e.config.ts`, include `tests/e2e/**/*.test.ts`). The original `scripts/e2e-live-checks.mjs` was deleted in commit `e74307a` ("convert live checks to a vitest e2e suite").
@@ -152,4 +165,37 @@ Superficial context collection only (dependencies, files, fixed constraints, exi
 - Workaround used for the `@playwright/test@1.62.1` add: hand-wrote the exact `pnpm add` output (`packages/dsh-model-settings/package.json` → `"@playwright/test": "^1.62.1"`; root `pnpm-lock.yaml` → package + snapshot entries with verbatim registry integrity hashes), then `CI=true pnpm install` (frozen) linked +3 packages, supply-chain check passed.
 - **Rule for all further pnpm work in this task: only frozen installs (`CI=true pnpm install`) work; never `pnpm add` or `--no-frozen-lockfile`** until the registry publishes a stable `dsh-timeout@0.1.1`.
 - The lockfile diff also synced 4 pre-existing `dsh-web-search-ddgs` importer drift entries (harmless, lockfile-only).
+
+### dsh 0.1.2-rc.1 web session/token semantics (Stage 5 spike)
+
+Empirical (fresh `DSH_HOME` under `.tmp/`, `dsh web --port 0 --no-open`, PATH dsh = 0.1.2-rc.1) + source (`dsh/` checkout, tag `dsh-v0.1.2-rc.1`).
+
+**Ready-line token (Q1).** The ready URL is `http://127.0.0.1:<port>/?token=<T>`, printed by `packages/bundle/web-app/src/index.ts:268-281` (`announceReady` → `connection.authenticatedUrl(webUrl)` → `console.log('dsh web: ' + ...)`). `authenticatedUrl` appends `?token=` at `packages/client/connection/src/rpc-host.ts:111-115`. The token is a 32-byte random base64url string **per process launch**, held in a `WeakMap` keyed by the process root (`browser-auth.ts:20,52-58` — `processLaunchToken`). It is **not one-shot**: a second GET of the tokenized URL re-mints a fresh cookie (observed: A2 and A3 both → 303 with different cookie values). The plain URL 303s to **`Location: /`** — the same root, with the session cookie set; the 303 is the token-exchange response, not a redirect to another endpoint.
+
+**Session establishment (Q2), observed statuses/headers:**
+
+| Request | Result |
+| --- | --- |
+| GET plain URL (no cookie) | **401** `cache-control: no-store`, body `dsh web authentication required; reopen the URL printed by dsh web.` |
+| GET tokenized URL (no cookie) | **303** `location: /`, `referrer-policy: no-referrer`, **`Set-Cookie: dsh-auth-<b64url> = v1.<payload>.<hmac>; Max-Age=2592000; Path=/; Expires=<+30d>; HttpOnly; SameSite=Strict`** |
+| GET tokenized URL again | **303** again + a *new* cookie (token reusable per boot) |
+| GET plain URL with cookie | **200**, 24 KB HTML shell |
+| GET tokenized URL with cookie | **303** + re-issue (token path always exchanges, even with a valid cookie) |
+| GET tokenized URL with WRONG token | **401** (same body) |
+
+- The **minimal recipe**: GET the tokenized ready URL once, capture `Set-Cookie` (name `dsh-auth-<base64url(sha256(host:port))>`), then send `Cookie: <name>=<value>` on all subsequent requests. The cookie alone yields 200; the **token parameter alone never yields 200** (valid token ⇒ always 303, wrong token ⇒ 401). Source: `authorizeIndex` at `browser-auth.ts:240` (only `GET /` accepts exactly one `token` param; 303 + cookie on success, 401 on wrong token or missing session).
+- **Cookie facts (source):** value is `v1.<base64url {version, authority, issuedAt, expiresAt}>.<base64url HMAC-SHA256>`; default lifetime **30 days** (`cookieMaxAgeDays`, `packages/client/connection/src/index.ts:81,88`); **authority-bound** (normalized `host:port` in both the deterministic cookie name — `COOKIE_PREFIX 'dsh-auth-'`, `browser-auth.ts:16,207-215` — and the signed payload), so a cookie from `:33401` is useless on `:44001`; `HostOnly`, `Path=/`, `HttpOnly`, `SameSite=Strict`, no `Secure` (loopback HTTP). The HMAC signing secret is a grant record owned by `client-connection/browser-session` persisted in `$DSH_HOME/.credentials.yaml` (`browser-auth.ts:12`; README line 37) — created/loaded at Connection activation, in-memory for the process, so **old cookies survive restarts of the same home** but die if `.credentials.yaml` is deleted/replaced or the authority changes.
+- **401 bodies:** index requests get the "dsh web authentication required…" text; RPC requests under a connection route get plain **`unauthorized`** (12 bytes).
+
+**Which requests need it:** every request on the `/api` prefix and on every registered channel prefix route passes `requestRejection` (`rpc-host.ts:96-99`, `index.ts:117-125`): first the Host/Origin browser-trust fence (curl to `127.0.0.1` passes — loopback; untrusted Host ⇒ **403 `forbidden`**), then `browserAuth.isAuthenticated` (missing/invalid cookie ⇒ **401 `unauthorized`** *before dispatch*). Confirmed live: `POST /api/whatever` → 401 `unauthorized` without cookie, 404 `not found` with cookie (reaches the dispatcher). Static assets (including `/plugins/…/client.js`) stay public (no cookie needed).
+
+**Host-RPC reachability on 0.1.2-rc.1 (Q3): NOT reachable — the `/model-settings` channel is never registered.** With the plugin added before boot (`dsh plugin --profile web add packages/dsh-model-settings`, profile bundle gains `@apkawa/dsh-model-settings`), the host half clearly loads (boot log shows `[model-settings] settings/updated fired`, autofill round running the probe), but:
+- `POST /model-settings/listModels` → **405** with and without a valid cookie (405 = `dsh-host-frontend-static` fallback answering non-GET/HEAD with no matching named route, `frontend-static/src/index.ts:125-128`), at t≈ready and again at +15 s.
+- `GET /model-settings/listModels` (cookie) → empty 404 (static fallback), whereas the registered `/api` route answers 404 `not found` text — the prefix route for `/model-settings` simply does not exist.
+- **Root cause (proven):** the plugin registers the channel only when `ctx.get('connection')` is defined *at apply time* (`packages/dsh-model-settings/src/index.ts:262-267`), but a probe row added to the same profile logged `[order-probe] connection=undefined rpc=no webServer=undefined` at apply — i.e. **profile-plugin rows apply before the web-app `client-connection`/`webServer` rows have activated** (connection is injected only after `webServer`, `client-connection/src/index.ts:67`). The channel registration is silently skipped; no retry. On 0.1.1-rc.2 this plugin's RPC worked (Stage 1 fact), so this is a 0.1.2 carrier/ordering gap that the plugin must fix (e.g. `ctx.inject(['settings','connection'])` instead of `ctx.get('connection')`).
+- Consequences: the vitest lane's readiness `fetch(url)` expecting 200 dies at the 401 first, and even a session-carrying lane would hit 405 on every `/model-settings/*` POST. The `settings.yaml` seed (route `e2e`, model `e2e-model`) is visible to the host (watcher fired) but the closed-port probe fails (`fetch failed`, `bad port`), so no autofill commit happens either — and it is not observable via RPC because the channel is absent. **The listModels poll therefore cannot succeed on 0.1.2-rc.1; host-side commit is not observable until the channel registration is fixed.**
+
+**0.1.1-rc.2 control (Q4):** re-proof judged unnecessary — Stage 1/3 already established, with the provisioned binary, that the plain ready URL returns 200 with no token and no cookie.
+
+**Source refs for the fix (Q5):** token mint + cookie + 303/401 exchange: `dsh/packages/client/connection/src/browser-auth.ts` (esp. `:20,52-58,16-20,207-215,240-312`); route registration, `/api` prefix, `requestRejection`, `authenticatedUrl`: `dsh/packages/client/connection/src/rpc-host.ts` (`:96-115,155-170`) and `src/index.ts` (`:108-127`); trust fence: `src/api-request-trust.ts`; ready-line print: `dsh/packages/bundle/web-app/src/index.ts:268-281`; 405 fallback: `dsh/packages/host/frontend-static/src/index.ts:125-128`. Documented behavior: `dsh/packages/client/connection/README.md` lines 35-37.
 

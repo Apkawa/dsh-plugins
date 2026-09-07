@@ -35,12 +35,12 @@ export interface ModelRow {
 interface RpcResult<T> { ok: boolean; value?: T; error?: { code: string; message: string } }
 
 /** A running e2e instance plus the child that owns it (for teardown). */
-export interface DshHandle { url: string; port: number; root: string; child: ChildProcess }
+export interface DshHandle { url: string; port: number; root: string; cookie: string | null; child: ChildProcess }
 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 let rpcSeq = 0
 
-/** Spawn the launcher and wait for its ready line + temp-root line. */
+/** Spawn the launcher and wait for its ready line + temp-root line + session-cookie line. */
 export async function startDsh(port: number = E2E_PORT): Promise<DshHandle> {
   const child = spawn('node', [LAUNCHER, '--port', String(port)], { cwd: PACKAGE_ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
@@ -50,16 +50,24 @@ export async function startDsh(port: number = E2E_PORT): Promise<DshHandle> {
 
   const readyRe = /dsh e2e instance: (http:\/\/[^\s]+)/
   const rootRe = /temp root: (.+)/
+  const cookieRe = /session cookie: (.+)/
   const deadline = Date.now() + READY_TIMEOUT_MS
   while (Date.now() < deadline) {
-    if (readyRe.test(stdout) && rootRe.test(stdout)) break
+    if (readyRe.test(stdout) && rootRe.test(stdout) && cookieRe.test(stdout)) break
     if (child.exitCode !== null) throw new Error(`launcher exited early (code ${child.exitCode}); ${stderr.trim() || stdout}`)
     await sleep(POLL_MS)
   }
   const urlMatch = readyRe.exec(stdout)
   const rootMatch = rootRe.exec(stdout)
-  if (urlMatch === null || rootMatch === null) throw new Error(`launcher did not reach ready in ${READY_TIMEOUT_MS / 1000}s; ${stderr.trim() || stdout}`)
-  return { url: urlMatch[1].replace('://0.0.0.0', '://127.0.0.1'), port, root: rootMatch[1], child }
+  const cookieMatch = cookieRe.exec(stdout)
+  if (urlMatch === null || rootMatch === null || cookieMatch === null) throw new Error(`launcher did not reach ready in ${READY_TIMEOUT_MS / 1000}s; ${stderr.trim() || stdout}`)
+  return { url: urlMatch[1].replace('://0.0.0.0', '://127.0.0.1'), port, root: rootMatch[1], cookie: parseSessionCookie(cookieMatch[1]), child }
+}
+
+// The launcher prints the literal `none` for dsh versions whose ready URL needs no session.
+function parseSessionCookie(value: string): string | null {
+  if (value === 'none') return null
+  return value
 }
 
 /** SIGTERM the launcher; wait for its exit and for it to remove its temp root. */
@@ -81,7 +89,7 @@ export async function rpc<T>(handle: DshHandle, endpoint: string, payload: unkno
   try {
     const res = await fetch(`http://127.0.0.1:${handle.port}/model-settings/${endpoint}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: rpcHeaders(handle),
       body: JSON.stringify({ type: 'client-request', rpcId, method: endpoint, payload }),
     })
     const envelope = (await res.json()) as { result: RpcResult<T> }
@@ -89,6 +97,12 @@ export async function rpc<T>(handle: DshHandle, endpoint: string, payload: unkno
   } catch (error) {
     return { ok: false, error: { code: 'transport', message: String(error) } }
   }
+}
+
+// Session-required dsh versions 401 without the cookie; keep the header set unchanged when none.
+function rpcHeaders(handle: DshHandle) {
+  if (handle.cookie === null) return { 'content-type': 'application/json' }
+  return { 'content-type': 'application/json', cookie: handle.cookie }
 }
 
 /** Seed one model into the instance's settings.yaml and wait for the host to commit it. */

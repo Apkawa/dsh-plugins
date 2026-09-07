@@ -6,17 +6,21 @@
  * instance shares nothing with the real home (sessions, `.env`, settings all
  * stay inside the temp root). The plugin under test is linked into the fresh
  * `web` profile exactly like the live one (`dsh plugin --profile web add`).
- * Provider API keys come from the inherited env and are the only thing taken
- * from the caller. SIGINT/SIGTERM stop the child gracefully and remove the temp
- * root unless `--keep` is passed.
+ * The dsh binary is resolved once and used for the plugin add and the `web`
+ * spawn: `E2E_DSH_BIN` override, then the provisioned baseline
+ * `.tmp/dsh-versions/0.1.1-rc.2/node_modules/.bin/dsh`, then `dsh` on PATH —
+ * the same chain the playwright lane uses (`tests/e2e/live.ts`). Provider API
+ * keys come from the inherited env and are the only thing taken from the
+ * caller. SIGINT/SIGTERM stop the child gracefully and remove the temp root
+ * unless `--keep` is passed.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url))
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 const READY_TIMEOUT_MS = 90_000
 
 let root
@@ -28,25 +32,31 @@ const { port, keep } = parseArgs(process.argv.slice(2))
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
 
-requireCommand('dsh', ['-V'])
+const dshBin = resolveDshBinary()
+requireCommand(dshBin, ['-V'])
 requireCommand('pnpm', ['--version'])
 
 const missing = ['index.js', 'client.js'].filter((name) => !existsSync(join(PACKAGE_ROOT, 'lib', name)))
 if (missing.length > 0) fail(`built artifacts missing: ${missing.join(', ')} — run "pnpm build" in the package first`)
 
-root = mkdtempSync(join(tmpdir(), 'dsh-e2e-'))
+// Repo rule: temp state lives in .tmp/, not the system tmpdir (same as tests/e2e/live.ts).
+root = mkdtempSync(join(REPO_ROOT, '.tmp', 'dsh-e2e-'))
 const env = { ...process.env, DSH_HOME: join(root, '.dsh'), DSH_AGENTS_HOME: join(root, '.agents') }
-addPlugin(env)
+addPlugin(dshBin, env)
 
-child = spawn('dsh', ['web', '--port', String(port), '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
+child = spawn(dshBin, ['web', '--port', String(port), '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 const ready = await waitForReadyLine(child).then((url) => ({ url }), (error) => ({ error: error.message }))
 if (ready.error !== undefined) fail(ready.error)
 
 const url = ready.url.replace('://0.0.0.0', '://127.0.0.1')
-const response = await fetch(url).catch(() => null)
-if (response?.status !== 200) fail(`GET ${url} → ${response === null ? 'unreachable' : response.status}; expected 200`)
+const session = url.includes('token=') ? await exchangeSession(url) : null
+const plainUrl = url.split('?')[0]
+const response = await fetch(plainUrl, session === null ? undefined : { headers: { cookie: session } }).catch(() => null)
+if (response?.status !== 200) fail(`GET ${plainUrl} → ${response === null ? 'unreachable' : response.status}; expected 200`)
 
+console.log(`dsh binary: ${dshBin}`)
 console.log(`dsh e2e instance: ${url}`)
+console.log(`session cookie: ${session === null ? 'none' : session}`)
 console.log(`temp root: ${root}`)
 console.log(`pid: ${process.pid} — SIGINT/SIGTERM stops it; --keep preserves the temp root`)
 
@@ -91,9 +101,22 @@ function requireCommand(command, args) {
   if (result.status !== 0) fail(`${command} ${args.join(' ')} exited with code ${result.status}`)
 }
 
+// E2E_DSH_BIN override (must exist) → provisioned 0.1.1-rc.2 baseline → `dsh` on PATH.
+function resolveDshBinary() {
+  const override = process.env.E2E_DSH_BIN
+  if (override !== undefined) {
+    if (existsSync(override)) return override
+    fail(`E2E_DSH_BIN does not exist: ${override} — point it at a dsh binary`)
+  }
+  const provisioned = join(REPO_ROOT, '.tmp', 'dsh-versions', '0.1.1-rc.2', 'node_modules', '.bin', 'dsh')
+  if (existsSync(provisioned)) return provisioned
+  if (spawnSync('dsh', ['--version'], { stdio: 'pipe' }).error !== undefined) fail('no dsh binary found: set E2E_DSH_BIN or provision .tmp/dsh-versions/0.1.1-rc.2/node_modules/.bin/dsh')
+  return 'dsh'
+}
+
 /** Link this package into the fresh `web` profile (auto-initialized by the CLI on first use). */
-function addPlugin(env) {
-  const result = spawnSync('dsh', ['plugin', '--profile', 'web', 'add', PACKAGE_ROOT], { cwd: root, env, stdio: 'pipe' })
+function addPlugin(bin, env) {
+  const result = spawnSync(bin, ['plugin', '--profile', 'web', 'add', PACKAGE_ROOT], { cwd: root, env, stdio: 'pipe' })
   if (result.status !== 0) {
     console.error(result.stdout?.toString())
     console.error(result.stderr?.toString())
@@ -126,6 +149,23 @@ function waitForReadyLine(child) {
 
 function onceExit(proc) {
   return new Promise((resolve) => { proc.once('exit', resolve) })
+}
+
+/**
+ * dsh 0.1.2+ ready URLs are an exchange-only 303: the token never yields a 200, it
+ * only mints the session cookie. All in-session requests go to the plain URL
+ * with that cookie instead.
+ */
+function exchangeSession(url) {
+  return fetch(url, { redirect: 'manual' }).then(
+    (response) => {
+      const setCookie = response.headers.get('set-cookie')
+      if (response.status !== 303) fail(`GET ${url} → ${response.status}; expected 303 from the token exchange`)
+      if (setCookie === null) fail(`GET ${url} → 303 without Set-Cookie`)
+      return setCookie.split(';')[0]
+    },
+    () => fail(`GET ${url} → unreachable; expected 303 from the token exchange`)
+  )
 }
 
 function cleanup() {

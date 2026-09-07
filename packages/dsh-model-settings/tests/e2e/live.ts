@@ -53,7 +53,10 @@ export function trackConsoleErrors(page: Page): () => string[] {
 // E2E_DSH_BIN override → provisioned 0.1.1-rc.2 baseline → `dsh` on PATH.
 function resolveDshBinary(): string {
   const override = process.env.E2E_DSH_BIN
-  if (override !== undefined && existsSync(override)) return override
+  if (override !== undefined) {
+    if (!existsSync(override)) throw new Error(`E2E_DSH_BIN does not exist: ${override} — point it at a dsh binary`)
+    return override
+  }
   const provisioned = join(repoRoot, '.tmp', 'dsh-versions', '0.1.1-rc.2', 'node_modules', '.bin', 'dsh')
   if (existsSync(provisioned)) return provisioned
   if (spawnSync('dsh', ['--version'], { stdio: 'pipe' }).error !== undefined) throw new Error('no dsh binary found: set E2E_DSH_BIN or provision .tmp/dsh-versions/0.1.1-rc.2/node_modules/.bin/dsh')
