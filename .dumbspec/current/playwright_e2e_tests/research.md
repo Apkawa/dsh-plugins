@@ -1,0 +1,59 @@
+# playwright_e2e_tests — research notes
+
+Superficial context collection only (dependencies, files, fixed constraints, existing solutions) — per dumbspec research rules. Written in English. Findings are appended incrementally as subagent research runs report them.
+
+## Item 1 — e2e acceptance test infrastructure for plugins (context)
+
+### Reference e2e setup (`~/code/react-fertilizer-calculator`)
+
+- Test file: `~/code/react-fertilizer-calculator/tests/e2e/calculator.test.ts` — a single `test("calculator: add fertilizers, calculate, result appears")` using `@playwright/test` (`expect`, `test`). It calls `page.goto("/#/")`, drives the UI via role-based locators (combobox `Добавить удобрение`, buttons `Открыть список` / `Добавить` / `Calculate`), asserts result `<li>` items are visible, asserts the `Need fertilizers!` marker has count 0, and asserts `trackConsoleErrors(page)()` returns `[]` (no console/page errors).
+- Shared helper: `tests/e2e/shared.ts` exports `FERTILIZERS` array and `addFertilizers(page)`; `resultItem(page, id)` returns `page.locator("li").filter({ hasText: id }).first()` (deliberately not role-based because Chrome doesn't give listitem roles there).
+- Console-error helper: `tests/helpers.ts` exports `trackConsoleErrors(page)` — hooks `page.on("console")` (filters known React dev warnings via `isKnownDevWarning`) and `page.on("pageerror")`, returns `() => string[]`.
+- Playwright config: `~/code/react-fertilizer-calculator/playwright.config.ts`. Key fields: `testDir: "./tests"`, `workers: 1`, `fullyParallel: false`, `retries: 1`, `reporter: [["list"]]`, `timeout: 30_000`, `expect.timeout: 10_000`, `use.baseURL: "http://localhost:3000"`, `use.trace: "retain-on-failure"`, `use.screenshot: "only-on-failure"`, single project `chromium` with `devices["Desktop Chrome"]`.
+- **How the "instance" is started:** via the config's `webServer` block — `command: "pnpm start"`, `url: "http://localhost:3000"`, `reuseExistingServer: true` (reuse a dev server already running), `timeout: 120_000` (Vite cold start can be slow). **It does NOT start a dsh instance** — `pnpm start` resolves to root script `pnpm -C apps/web start` → `apps/web/package.json` script `"start": "vite"` (Vite dev server on port 3000, `server.port: 3000`). So the reference e2e is a plain browser test against a static/React SPA served by Vite, **not** against a dsh harness.
+- **No DSH_HOME / no plugin registration in the reference test.** There is no `DSH_HOME` env var, no test home dir, no plugin addition step. The only home-like dirs present are `.pw-home/` (contains `.cache`, `.config`, `.pki` — appears to be a scratch HOME, NOT referenced by the playwright config or package.json scripts) and `.playwright/` (empty). `.env` holds only `pnpm_config_store_dir=./.pnpm-cache/v11` (pnpm cache location, unrelated to dsh).
+- Scripts (`root package.json`): `test:e2e: "playwright test tests/e2e"`, `test:smoke: "playwright test tests/smoke"`, `start: "pnpm -C apps/web start"`, `full-check` chains test/lint/type/build.
+- Deps (`root package.json` devDependencies): `@playwright/test ^1.62.1`, `@axe-core/playwright ^4.13.0`, `@biomejs/biome ^2.5.10`, `ts-node ^9.0.0`, `typescript 7.0.2`.
+- Engine pins (`root package.json`): `"engines": { "node": ">=24", "pnpm": ">=11.22.0" }`, `"packageManager": "pnpm@11.22.0"`.
+- A smoke suite also exists: `tests/smoke/routes.test.ts` — table-driven over routes, each does `page.goto(url)`, expects a page-specific marker text visible, asserts `trackConsoleErrors(page)()` === `[]`.
+
+### Existing e2e in THIS repo (browserless, vitest — not playwright)
+
+- `packages/dsh-model-settings/tests/e2e-live.ts` (git commit "test(e2e-live): browserless live checks on an independent clean-home dsh web") is the closest existing pattern. It is **not** playwright: a plain vitest file that spawns a real `dsh` binary and talks to it over HTTP/RPC.
+- Launcher helper `packages/dsh-model-settings/tests/e2e-live-utils.ts`: `mkdtempSync(join(tmpdir(), 'dsh-e2e-'))` temp root; env `DSH_HOME=<root>/.dsh`, `DSH_AGENTS_HOME=<root>/.agents`; child cwd = temp root; only API-key-ish env inherited from caller; SIGTERM teardown + `rmSync` unless `--keep`. Spawns the PATH `dsh` binary (no tsx, uses the installed global `dsh` 0.1.2-rc.1 at `/home/apkawa/.nvm/versions/node/v24.19.0/bin/dsh`).
+- Ready contract used by the existing e2e: wait for a stdout/stderr line matching `/dsh web: (http:\/\/[^\s]+)/` and rewrite `0.0.0.0` → `127.0.0.1`. Spawns `dsh web --port <n> --no-open` (port 3081 default, 3091 via `E2E_PORT` fixture).
+- It seeds models by writing `<root>/.dsh/settings.yaml` — the running host's settings watcher picks it up (no RPC for seeding). Then it drives the plugin over RPC: `POST /model-settings/<endpoint>` with JSON body `{ type: 'client-request', rpcId, method, payload }`, asserting `result.ok` / `result.value`.
+- `packages/dsh-web-search-ddgs/tests/e2e-live.ts` follows the same launcher pattern (same utils) for the other plugin.
+- This repo currently has **no playwright dependency**: `pnpm-lock.yaml` contains only the optional vitest peer `@vitest/browser-playwright: 4.1.11` (never installed). No `playwright.config.ts`, no `@playwright/test`.
+
+### DSH_HOME mechanics (from `dsh/` checkout, read-only; HEAD a66e470204 = 0.1.2-rc.1)
+
+- `dsh/packages/boot/home-paths/src/index.ts`: `DSH_HOME_ENV = 'DSH_HOME'`, `DSH_AGENTS_HOME_ENV = 'DSH_AGENTS_HOME'`, `DSH_HOME_DIR_NAME = '.dsh'`, `AGENTS_HOME_DIR_NAME = '.agents'`. `resolveDshHome()`: configured path > non-blank `$DSH_HOME` > `~/.dsh`.
+- `dsh/packages/boot/app-boot/src/profile.ts`: `resolveProfileDir(name, home?)` → `<home>/profiles/<name>` (flat `PROFILES_DIR = 'profiles'`).
+- Shipped web profile template: `PROFILE_TEMPLATES.web = { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'], patchReload: 'live' }`.
+- `initProfile(dir, bundles, patchReload)` writes (skips existing files):
+  - `package.json`: `{ name: 'dsh-profile-<basename>', private: true, dependencies: {}, dsh: { profile: { bundles, patchReload } } }`
+  - `cordis.patch.yml`: comment header + `[]` (user patch layer, applied after every bundle layer)
+  - `pnpm-workspace.yaml`: `packages: ['.']`, `nodeLinker: hoisted`, `autoInstallPeers: false` (out-of-tree plugins get a flat hoisted `node_modules`; missing peers fall through to the healed `$DSH_HOME/profiles/node_modules` fallback, so every plugin shares the installation's single cordis instance)
+- The profile `package.json`'s `dsh.profile.bundles` array is the **ordered loader entry list** the tree is composed from (`profile-boot.ts`: "The tree is composed as patches: each bundle in package.json's dsh.profile.bundles, then cordis.patch.yml, then any --patch overlays").
+- `dsh plugin --profile <name> <args>` is a **thin pnpm forwarder** run inside the profile dir (`dsh/packages/cli/src/plugin.ts`): `add` = `pnpm add` there (works with a local path). After exit 0, `reconcilePlugins` appends every added dependency whose `package.json` declares `dsh.bundle.patch` to `dsh.profile.bundles` (in declaration order); deps without a `dsh.bundle.patch` get a one-time warning and are **not** added as loader rows.
+- **Dual-face plugin manifest** (`package.json`):
+  - `dsh.bundle: { patch: "./cordis.patch.yml" }` → the host-side loader entry (a Cordis patch layer with the plugin's service rows). This is what makes the plugin a *loader entry* of the profile.
+  - `dsh.client: { inject: [...], platform: 'web', immediately?, external? }` → the browser-facing module-table row, composed into `window.__DSH_BOOT__`; served by the web server under `/plugins/<id>/client.js` (combo URL `/plugins/??<ids>&rev=<rev>`). The registry serves the built `lib/client.js` — the package must be **built** (`pnpm build` in the plugin package) before a live `dsh web` will load its client half (client AGENTS.md, checklist item 5; missing bundle → `MissingClientBundleError`, "run `pnpm run build` before launch").
+  - `inject` in `dsh.client` is **informational only** (preflight display / HMR diffing) — it does not sequence activation; Cordis service waits do. `external` declares non-baseline module-table requests. `immediately: true` = stage-one prefetch.
+- `dsh web` startup (`dsh/packages/bundle/web-app/`):
+  - `src/startup.ts` (plugin `web-startup`) parses the flag family `--host`, `--port`, `--trusted-host`, `--no-open` via commander into the `webStartup` service.
+  - `cordis.patch.yml` (lines ~117–124): `webServer` config `host: !!js ctx.webStartup.host ?? '127.0.0.1'`, `port: !!js ctx.webStartup.port ?? 3080`, compression gzip. **Default GUI URL: `http://127.0.0.1:3080`** (the running GUI in this environment).
+  - `src/index.ts` (plugin `web-app`) config: `openBrowser` default `true` (suppressed by `--no-open`; also suppressed on SSH launches), `printUrl` default `true` — the ready line is printed on activation.
+- **Ready line is a tokenized, authenticated URL**: dsh's own web e2e (`dsh/apps/web/tests/smoke-real.e2e.ts`) asserts the ready URL matches `/^http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+$/u`; a GET on it responds `303` and sets an auth cookie. So a browser test must `page.goto(readyUrl)` including the `?token=` — that is the login handoff (no separate login form in these tests). `apps/cli/tests/web-auth.e2e.ts` covers the token exchange explicitly.
+- dsh's own web e2e style (`dsh/apps/web/tests/*.e2e.ts`, run via `vitest.web.config.ts`): **vitest + bare `playwright`** (`import { chromium } from 'playwright'`, `chromium.launch({ headless: true })`), not `@playwright/test`. They boot an **in-process** host with a temp harness home (`scaffold.ts`: `harnessHome = join(workspaceCwd, '.dsh-home')`, env `DSH_HOME`/`DSH_AGENTS_HOME` pinned) rather than spawning the CLI — but the CLI-spawning variant exists in `apps/cli/tests/web-auth.e2e.ts` (`node --import tsx <bin> web --no-open --port <port>` with a cleaned env that strips `KEY|SECRET|TOKEN|PASSWORD` names, plus `DSH_TELEMETRY_DISABLED: '1'`, `SSH_CONNECTION: ''`, `SSH_TTY: ''`).
+- `dsh`'s own lockfile pins `playwright@1.61.1` (+ `playwright-core 1.61.1`) as dev deps for exactly these browser e2e lanes.
+
+### Fixed constraints (runtimes, playwright availability, ports)
+
+- Runtimes: Node `v24.19.0` (this repo's root `package.json` engines: `node >=24.0.0`; dsh checkout requires `^22.19.0 || >=24.0.0`, packageManager `pnpm@11.7.0`). Bun `1.3.12` is installed but both repos are pnpm workspaces.
+- Installed global `dsh` is `0.1.2-rc.1` on PATH — same version as the read-only `dsh/` checkout HEAD (`a66e470204`). The existing repo e2e spawns this PATH binary (no tsx), which is the simplest launcher for a fresh acceptance test.
+- Playwright in this sandbox: global `playwright-cli` on PATH (v0.1.18; 0.1.19 update available). Browser binaries already installed under `~/.cache/ms-playwright/` (bind-mounted, shared): `chromium-1169`, `chromium-1234`, `chromium_headless_shell-1169`, `chromium_headless_shell-1234`, `firefox-1482`, `firefox-1538`, `webkit-2158`, `ffmpeg-1011`. So a fresh `@playwright/test` project's chromium needs either `npx playwright install` (network) or the env vars from `~/.agents/docs/playwright-cli-sandbox.md` (`XDG_CACHE_HOME`, `PLAYWRIGHT_BROWSERS_PATH`, `PWTEST_SOCKETS_DIR` → project `.cache/`) to reuse the shared browser cache.
+- Port choices seen: 3080 = `dsh web` default (occupied by the running GUI in this environment), 3081/3091 = existing repo e2e launcher ports, 3000 = reference project Vite port, `--port 0` = OS-assigned ephemeral (used by dsh's own CLI-spawning tests, which then parse the printed URL). An e2e that spawns `dsh web --port 0 --no-open` and reads the tokenized URL from the ready line avoids all fixed-port collisions.
+- The plugin packages' client halves must be pre-built for live server loading (see `dsh.client` note above); both plugins have `pnpm build` scripts.
+
