@@ -20,11 +20,14 @@ export default defineConfig({
   reporter: [['list']],
   timeout: 30_000,
   expect: { timeout: 10_000 },
+  // Top-level outputDir (not use.outputDir): the normalized project setting that
+  // governs both test artifacts and the .last-run.json run state — keeps them all
+  // under the git-ignored .tmp/ dir instead of a test-results/ next to package.json.
+  outputDir: path.join(packageDir, '..', '..', '.tmp', 'playwright', 'model-settings'),
   use: {
     browserName: 'chromium',
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
-    outputDir: path.join(packageDir, '..', '..', '.tmp', 'playwright', 'model-settings'),
   },
 })

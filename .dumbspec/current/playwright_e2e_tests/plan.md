@@ -39,13 +39,13 @@ Review decisions: runner `@playwright/test`; keyless mandatory (assert only what
 **Commit:** `test(dsh-model-settings): failing playwright e2e acceptance skeleton`
 
 ## Stage 3 — Green: implement until the test passes
-- [ ] Extend the e2e-live launcher (`scripts/e2e-live.mjs`) — or a thin new helper reusing its plugin-add step — in the same style: dsh binary selection (env `E2E_DSH_BIN`, default the provisioned 0.1.1-rc.2, fallback PATH `dsh`), ephemeral `--port 0` + ready-URL parse (plain URL on 0.1.1-rc.2, tokenized on 0.1.2+), fresh-profile plugin-add step (`dsh plugin --profile web add <abs path>`), `pnpm build` of the plugin client half before launch (require `lib/index.js` + `lib/client.js`), browser env for the shared cache (`~/.cache/ms-playwright` — Playwright's Linux default; set `PLAYWRIGHT_BROWSERS_PATH` explicitly only if needed), keyless env (no API-key env inherited)
-- [ ] Port `trackConsoleErrors` (console + pageerror hooks, returns a collector) in the reference style
-- [ ] Make the acceptance test pass; keep the existing browserless `e2e-live` passing unchanged
-- [ ] Wire the `test:e2e` script in `packages/dsh-model-settings/package.json`
+- [x] Extend the e2e-live launcher (`scripts/e2e-live.mjs`) — or a thin new helper reusing its plugin-add step — in the same style: dsh binary selection (env `E2E_DSH_BIN`, default the provisioned 0.1.1-rc.2, fallback PATH `dsh`), ephemeral `--port 0` + ready-URL parse (plain URL on 0.1.1-rc.2, tokenized on 0.1.2+), fresh-profile plugin-add step (`dsh plugin --profile web add <abs path>`), `pnpm build` of the plugin client half before launch (require `lib/index.js` + `lib/client.js`), browser env for the shared cache (`~/.cache/ms-playwright` — Playwright's Linux default; set `PLAYWRIGHT_BROWSERS_PATH` explicitly only if needed), keyless env (no API-key env inherited) — done as a thin new helper `tests/e2e/live.ts` (the vitest-lane `scripts/e2e-live.mjs` untouched)
+- [x] Port `trackConsoleErrors` (console + pageerror hooks, returns a collector) in the reference style — severity-filtered (error/warning + pageerror); the benign `[VERBOSE] [DOM] Password field…` note is excluded by design
+- [x] Make the acceptance test pass; keep the existing browserless `e2e-live` passing unchanged — playwright lane green (1 passed, keyless, ~6 s); the vitest lane is byte-unchanged but is red on this machine for a **pre-existing external** reason: PATH dsh 0.1.2-rc.1 tokenized ready URL vs the old launcher's untokenized readiness GET → 401 (no-plugin control: GET 303 → follow → 401); independent of this diff; covered by task `fix_0.1.2-rc1` (fact → research.md)
+- [x] Wire the `test:e2e` script in `packages/dsh-model-settings/package.json` — **user decision**: chain `vitest run --config vitest.e2e.config.ts && pnpm exec playwright test`; stays red on the vitest leg until `fix_0.1.2-rc1`; the playwright leg remains runnable separately (`pnpm exec playwright test`)
 
-**Criterion:** `pnpm test:e2e` green in a clean env (no `DEEPSEEK_API_KEY`, real `~/.dsh` untouched); existing `e2e-live` still green.
-**Commit:**
+**Criterion:** `pnpm test:e2e` green in a clean env (no `DEEPSEEK_API_KEY`, real `~/.dsh` untouched); existing `e2e-live` still green. — **Accepted under the user-approved adjustment**: chain wiring as decided; playwright leg green in a clean keyless env (`~/.dsh` mtime unchanged); the vitest leg's redness proven pre-existing (plugin-independent control) and not a regression.
+**Commit:** `test(dsh-model-settings): playwright e2e acceptance green (keyless, dsh 0.1.1-rc.2)`
 
 ## Stage 4 — Refactor + optional second plugin
 - [ ] Refactor: launcher additions stay minimal and reusable across plugin packages (per-package structure as is, no premature shared-package abstraction)
