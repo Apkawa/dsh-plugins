@@ -14,6 +14,7 @@
   - добавление плагина в тестовый профиль;
   - запуск тестового инстанса `dsh web` и ожидание готовности (tokenized URL);
   - браузерная (headless Chromium) проверка: клиентская часть плагина загружается и работает в GUI, без console/page-ошибок.
+  - возможность выбора версии dsh под тестом (env-переменная, выбирает бинарник); базовая версия — **0.1.1-rc.2**.
 - Подключение теста к скриптам пакета/репозитория (`pnpm test:e2e`).
 
 **Не входит** (отдельная задача `fix_0.1.2-rc1`): диагностика и фикс ошибки `failed to import loader entry … missed the module table`.
@@ -28,6 +29,7 @@
 - **Прецедент браузерных e2e у dsh:** `apps/web/tests/*.e2e.ts` — vitest + plain `playwright` (`chromium.launch({headless:true})`), playwright 1.61.1; CLI-spawning-вариант — `apps/cli/tests/web-auth.e2e.ts` с очищенным env.
 - **Сэндбокс без сети для установки браузеров:** браузеры уже стоят в общем `~/.cache/ms-playwright` (chromium-1234 + headless shell, firefox, webkit); env-переменные для переиспользования (`XDG_CACHE_HOME`, `PLAYWRIGHT_BROWSERS_PATH`, …) задокументированы в `~/.agents/docs/playwright-cli-sandbox.md`.
 - **Ограничения среды:** Node >=24, pnpm-workspace (`pnpm_config_store_dir=./.cache/pnpm/v11`), temp-файлы в `./.tmp`, кэши в `./.cache`, checkout `dsh/` — read-only, в репозитории сейчас нет никакого playwright-зависимости.
+- **Версии dsh (заявление пользователя):** текущее состояние плагинов работает в **dsh 0.1.1-rc.2**; глобальный dsh на PATH = 0.1.2-rc.1 — на этой версии клиент плагина ломается (`missed the module table`, отдельная задача `fix_0.1.2-rc1`). Поэтому e2e не может по умолчанию spawn'ить `dsh` с PATH — бинарник версии должен выбираться явно (provisioned 0.1.1-rc.2).
 
 ## Подход (рабочая гипотеза, уточнить на review)
 
@@ -42,3 +44,4 @@
 3. **Глубина ассертов:** минимальный смоук — страница открывается по tokenized-URL, клиентский слот/секция плагина рендерится, 0 console/page-ошибок.
 4. **Охват:** сначала `dsh-model-settings`; `dsh-web-search-ddgs` — опциональная стадия, если дёшево.
 5. **Эмпирические вопросы** (локальное `pnpm add <local-path>` офлайн во fresh-профиле; переиспользование браузеров из `~/.cache/ms-playwright` без network-установки) — проверяются spike-стадией плана (Stage 1), факты фиксируются в `research.md`.
+6. **Многоверсионность dsh:** launcher выбирает бинарник dsh через env-переменную (напр. `E2E_DSH_BIN`); дефолт — provisioned **0.1.1-rc.2** (известно-рабочая база); 0.1.2-rc.1 пока не поддерживается приёмкой (плагин на ней сломан — задача `fix_0.1.2-rc1`).
