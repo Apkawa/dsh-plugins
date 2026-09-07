@@ -5,3 +5,5 @@ lib
 dist
 examples/tmp/
 .npm-cache
+.cache
+.tmp
