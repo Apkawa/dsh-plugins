@@ -31,12 +31,12 @@ Review decisions: runner `@playwright/test`; keyless mandatory (assert only what
 **Commit:** `docs(playwright-e2e-tests): Stage 1 spike findings + spec/plan adjustments`
 
 ## Stage 2 — Red: failing playwright e2e
-- [ ] `pnpm add -D @playwright/test@1.62.1` in the package (the only version matching cached chromium-1234; install env: `pnpm_config_store_dir=./.cache/pnpm/v11`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`; if install is impossible — stop and report)
-- [ ] Package-local `playwright.config.ts`: testDir `tests/e2e`, chromium project, `workers: 1`, trace/screenshot on failure, sane timeouts; no `webServer` block (instance is spawned by the test)
-- [ ] `tests/e2e/acceptance.spec.ts` (red): launch the test home with the plugin on the **0.1.1-rc.2** binary, `page.goto(readyUrl)` (use the URL printed on the ready line as-is — plain on 0.1.1-rc.2, tokenized `?token=` on 0.1.2+; `dsh web --port 0 --no-open`), assert the plugin section renders + `trackConsoleErrors(page)()` returns `[]`; references launcher helpers that do not exist yet
+- [x] `pnpm add -D @playwright/test@1.62.1` in the package (the only version matching cached chromium-1234; install env: `pnpm_config_store_dir=./.cache/pnpm/v11`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`; if install is impossible — stop and report) — note: `pnpm add` was impossible repo-wide (broken resolving installs, see research.md); the exact `pnpm add` output was hand-applied, then frozen `CI=true pnpm install`
+- [x] Package-local `playwright.config.ts`: testDir `tests/e2e`, chromium project, `workers: 1`, trace/screenshot on failure, sane timeouts; no `webServer` block (instance is spawned by the test) — ESM package → `import.meta.url` (no `__dirname`); `testMatch '**/*.spec.ts'` keeps the vitest lane out
+- [x] `tests/e2e/acceptance.spec.ts` (red): launch the test home with the plugin on the **0.1.1-rc.2** binary, `page.goto(readyUrl)` (use the URL printed on the ready line as-is — plain on 0.1.1-rc.2, tokenized `?token=` on 0.1.2+; `dsh web --port 0 --no-open`), assert the plugin section renders + `trackConsoleErrors(page)()` returns `[]`; references launcher helpers that do not exist yet (`./live` → Stage 3)
 
-**Criterion:** the test exists, is wired to `pnpm test:e2e`, and fails for the right reason (missing infrastructure), not a syntax/config error.
-**Commit:**
+**Criterion:** the test exists, is wired to `pnpm test:e2e`, and fails for the right reason (missing infrastructure), not a syntax/config error. (Accepted with interpretation: the `test:e2e` *script* wiring is the Stage 3 checkbox by plan design; at this stage the runner wiring = package-local config + `pnpm exec playwright test`, verified. Red failure = `Cannot find module '…/tests/e2e/live'`.)
+**Commit:** `test(dsh-model-settings): failing playwright e2e acceptance skeleton`
 
 ## Stage 3 — Green: implement until the test passes
 - [ ] Extend the e2e-live launcher (`scripts/e2e-live.mjs`) — or a thin new helper reusing its plugin-add step — in the same style: dsh binary selection (env `E2E_DSH_BIN`, default the provisioned 0.1.1-rc.2, fallback PATH `dsh`), ephemeral `--port 0` + ready-URL parse (plain URL on 0.1.1-rc.2, tokenized on 0.1.2+), fresh-profile plugin-add step (`dsh plugin --profile web add <abs path>`), `pnpm build` of the plugin client half before launch (require `lib/index.js` + `lib/client.js`), browser env for the shared cache (`~/.cache/ms-playwright` — Playwright's Linux default; set `PLAYWRIGHT_BROWSERS_PATH` explicitly only if needed), keyless env (no API-key env inherited)
