@@ -30,6 +30,7 @@
 - **Сэндбокс без сети для установки браузеров:** браузеры уже стоят в общем `~/.cache/ms-playwright` (chromium-1234 + headless shell, firefox, webkit); env-переменные для переиспользования (`XDG_CACHE_HOME`, `PLAYWRIGHT_BROWSERS_PATH`, …) задокументированы в `~/.agents/docs/playwright-cli-sandbox.md`.
 - **Ограничения среды:** Node >=24, pnpm-workspace (`pnpm_config_store_dir=./.cache/pnpm/v11`), temp-файлы в `./.tmp`, кэши в `./.cache`, checkout `dsh/` — read-only, в репозитории сейчас нет никакого playwright-зависимости.
 - **Версии dsh (заявление пользователя):** текущее состояние плагинов работает в **dsh 0.1.1-rc.2**; глобальный dsh на PATH = 0.1.2-rc.1 — на этой версии клиент плагина ломается (`missed the module table`, отдельная задача `fix_0.1.2-rc1`). Поэтому e2e не может по умолчанию spawn'ить `dsh` с PATH — бинарник версии должен выбираться явно (provisioned 0.1.1-rc.2).
+- **Divergence ready-URL (спайк-факт):** на 0.1.1-rc.2 ready-строка — обычный URL без `?token=` (GET → 200, без 303/cookie); токенизация и 303-хендофф — поведение 0.1.2+. Тест использует напечатанный URL как есть; version-aware ассерты — только если покрывается 0.1.2+.
 
 ## Подход (рабочая гипотеза, уточнить на review)
 

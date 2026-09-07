@@ -21,25 +21,25 @@ Review decisions: runner `@playwright/test`; keyless mandatory (assert only what
 **Commit:** `docs(playwright-e2e-tests): spec + plan for plugin e2e acceptance`
 
 ## Stage 1 — Spike: validate open unknowns
-- [ ] Keyless UI: temp `DSH_HOME` + built plugin, headless chromium on the ready URL without `DEEPSEEK_API_KEY` — record exactly what the model-settings UI renders (fact → research.md)
-- [ ] How the existing `e2e-live` gets the plugin into the test home (trace the code path; fact → research.md)
-- [ ] Offline local plugin add: `dsh plugin --profile web add <local path>` on a fresh profile without network; the plugin must land in `dsh.profile.bundles` and the home must boot
-- [ ] Browser reuse: a fresh `@playwright/test` install resolves chromium from the shared `~/.cache/ms-playwright` via env vars (`XDG_CACHE_HOME`/`PLAYWRIGHT_BROWSERS_PATH`) without a network `playwright install`
-- [ ] dsh version provisioning: obtain a runnable `@deepseek-ai/dsh@0.1.1-rc.2` (e.g. `pnpm dlx` / versioned install into `./.cache`), verify a temp home boots on it and the plugin loads; record the provisioning path (fact → research.md)
+- [x] Keyless UI: temp `DSH_HOME` + built plugin, headless chromium on the ready URL without `DEEPSEEK_API_KEY` — record exactly what the model-settings UI renders (fact → research.md)
+- [x] How the existing `e2e-live` gets the plugin into the test home (trace the code path; fact → research.md)
+- [x] Offline local plugin add: `dsh plugin --profile web add <local path>` on a fresh profile without network; the plugin must land in `dsh.profile.bundles` and the home must boot
+- [x] Browser reuse: a fresh `@playwright/test` install resolves chromium from the shared `~/.cache/ms-playwright` via env vars (`XDG_CACHE_HOME`/`PLAYWRIGHT_BROWSERS_PATH`) without a network `playwright install`
+- [x] dsh version provisioning: obtain a runnable `@deepseek-ai/dsh@0.1.1-rc.2` (e.g. `pnpm dlx` / versioned install into `./.cache`), verify a temp home boots on it and the plugin loads; record the provisioning path (fact → research.md)
 
 **Criterion:** every unknown has a recorded fact in research.md; spec/plan adjusted where a fact contradicts them.
-**Commit:**
+**Commit:** `docs(playwright-e2e-tests): Stage 1 spike findings + spec/plan adjustments`
 
 ## Stage 2 — Red: failing playwright e2e
-- [ ] `pnpm add -D @playwright/test` in the package (store `./.cache/pnpm/v11`; if offline install is impossible — stop and report)
+- [ ] `pnpm add -D @playwright/test@1.62.1` in the package (the only version matching cached chromium-1234; install env: `pnpm_config_store_dir=./.cache/pnpm/v11`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`; if install is impossible — stop and report)
 - [ ] Package-local `playwright.config.ts`: testDir `tests/e2e`, chromium project, `workers: 1`, trace/screenshot on failure, sane timeouts; no `webServer` block (instance is spawned by the test)
-- [ ] `tests/e2e/acceptance.spec.ts` (red): launch the test home with the plugin on the **0.1.1-rc.2** binary, `page.goto(readyUrl)` (tokenized URL, `dsh web --port 0 --no-open`), assert the plugin section renders + `trackConsoleErrors(page)()` returns `[]`; references launcher helpers that do not exist yet
+- [ ] `tests/e2e/acceptance.spec.ts` (red): launch the test home with the plugin on the **0.1.1-rc.2** binary, `page.goto(readyUrl)` (use the URL printed on the ready line as-is — plain on 0.1.1-rc.2, tokenized `?token=` on 0.1.2+; `dsh web --port 0 --no-open`), assert the plugin section renders + `trackConsoleErrors(page)()` returns `[]`; references launcher helpers that do not exist yet
 
 **Criterion:** the test exists, is wired to `pnpm test:e2e`, and fails for the right reason (missing infrastructure), not a syntax/config error.
 **Commit:**
 
 ## Stage 3 — Green: implement until the test passes
-- [ ] Extend the e2e-live launcher utils (or a thin new helper in the same style): dsh binary selection (env `E2E_DSH_BIN`, default the provisioned 0.1.1-rc.2, fallback PATH `dsh`), ephemeral `--port 0` + tokenized URL parse, fresh-profile plugin-add step, `pnpm build` of the plugin client half before launch, browser env vars for the shared browser cache, keyless env (no API-key env inherited)
+- [ ] Extend the e2e-live launcher (`scripts/e2e-live.mjs`) — or a thin new helper reusing its plugin-add step — in the same style: dsh binary selection (env `E2E_DSH_BIN`, default the provisioned 0.1.1-rc.2, fallback PATH `dsh`), ephemeral `--port 0` + ready-URL parse (plain URL on 0.1.1-rc.2, tokenized on 0.1.2+), fresh-profile plugin-add step (`dsh plugin --profile web add <abs path>`), `pnpm build` of the plugin client half before launch (require `lib/index.js` + `lib/client.js`), browser env for the shared cache (`~/.cache/ms-playwright` — Playwright's Linux default; set `PLAYWRIGHT_BROWSERS_PATH` explicitly only if needed), keyless env (no API-key env inherited)
 - [ ] Port `trackConsoleErrors` (console + pageerror hooks, returns a collector) in the reference style
 - [ ] Make the acceptance test pass; keep the existing browserless `e2e-live` passing unchanged
 - [ ] Wire the `test:e2e` script in `packages/dsh-model-settings/package.json`
