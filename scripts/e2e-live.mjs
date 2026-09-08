@@ -4,8 +4,9 @@
  *
  * The temp root carries DSH_HOME/DSH_AGENTS_HOME and is the child's cwd, so the
  * instance shares nothing with the real home (sessions, `.env`, settings all
- * stay inside the temp root). The plugin under test is linked into the fresh
- * `web` profile exactly like the live one (`dsh plugin --profile web add`).
+ * stay inside the temp root). The plugin under test (`--package <name>`, the
+ * directory `packages/<name>` in this repo) is linked into the fresh `web`
+ * profile exactly like the live one (`dsh plugin --profile web add`).
  * The dsh binary is resolved once and used for the plugin add and the `web`
  * spawn: `E2E_DSH_BIN` override, then the provisioned baseline
  * `.tmp/dsh-versions/0.1.1-rc.2/node_modules/.bin/dsh`, then `dsh` on PATH —
@@ -15,19 +16,20 @@
  * unless `--keep` is passed.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url))
-const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const READY_TIMEOUT_MS = 90_000
 
 let root
 let child = null
 let stopping = false
 
-const { port, keep } = parseArgs(process.argv.slice(2))
+const { port, keep, pkg } = parseArgs(process.argv.slice(2))
+const PACKAGE_ROOT = join(REPO_ROOT, 'packages', pkg)
+if (!existsSync(PACKAGE_ROOT)) fail(`--package "${pkg}" not found: no packages/${pkg} in this repo`)
 
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
@@ -36,7 +38,8 @@ const dshBin = resolveDshBinary()
 requireCommand(dshBin, ['-V'])
 requireCommand('pnpm', ['--version'])
 
-const missing = ['index.js', 'client.js'].filter((name) => !existsSync(join(PACKAGE_ROOT, 'lib', name)))
+const packageJson = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'))
+const missing = requiredArtifacts(packageJson).filter((name) => !existsSync(join(PACKAGE_ROOT, name)))
 if (missing.length > 0) fail(`built artifacts missing: ${missing.join(', ')} — run "pnpm build" in the package first`)
 
 // Repo rule: temp state lives in .tmp/, not the system tmpdir (same as tests/e2e/live.ts).
@@ -77,22 +80,36 @@ async function stop() {
 }
 
 function parseArgs(argv) {
-  const options = { port: 3081, keep: false }
+  const options = { port: 3081, keep: false, pkg: null }
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]
     if (token === '--keep') {
       options.keep = true
       continue
     }
-    if (token === '--port') {
+    if (token === '--port' || token === '--package') {
       index += 1
-      options.port = Number(argv[index])
+      if (argv[index] === undefined) fail(`${token} requires a value`)
+      if (token === '--port') {
+        options.port = Number(argv[index])
+        continue
+      }
+      options.pkg = argv[index]
       continue
     }
-    fail(`unknown option "${token}" — e2e:live supports --port <n> and --keep`)
+    fail(`unknown option "${token}" — e2e:live supports --package <name>, --port <n> and --keep`)
   }
+  if (options.pkg === null) fail('--package <name> is required — the plugin to link, as its directory under packages/')
   if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535) fail(`invalid --port (want an integer in 1..65535)`)
   return options
+}
+
+// lib/index.js is always required; lib/client.js additionally when the package's exports map has a ./client key.
+function requiredArtifacts(packageJson) {
+  const artifacts = ['lib/index.js']
+  const exportsMap = packageJson.exports
+  if (exportsMap !== null && typeof exportsMap === 'object' && Object.prototype.hasOwnProperty.call(exportsMap, './client')) artifacts.push('lib/client.js')
+  return artifacts
 }
 
 function requireCommand(command, args) {

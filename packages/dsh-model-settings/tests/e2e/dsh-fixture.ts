@@ -13,7 +13,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url))
-const LAUNCHER = join(PACKAGE_ROOT, 'scripts', 'e2e-live.mjs')
+const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
+const LAUNCHER = join(REPO_ROOT, 'scripts', 'e2e-live.mjs')
 
 export const E2E_PORT = 3091
 export const ROUTE_ID = 'e2e'
@@ -42,7 +43,7 @@ let rpcSeq = 0
 
 /** Spawn the launcher and wait for its ready line + temp-root line + session-cookie line. */
 export async function startDsh(port: number = E2E_PORT): Promise<DshHandle> {
-  const child = spawn('node', [LAUNCHER, '--port', String(port)], { cwd: PACKAGE_ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn('node', [LAUNCHER, '--package', 'dsh-model-settings', '--port', String(port)], { cwd: PACKAGE_ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
   child.stdout.on('data', (chunk) => { stdout += chunk })
