@@ -36,4 +36,4 @@ client-only changes need a page reload. `pnpm typecheck` runs both tsconfigs;
 
 **Tests**: `tests/unit/{server|client}/<module>.test.ts` — host-side modules under `server/`, client-side (`src/client`) under `client/` (vitest node env, FakeStore/FakeConnection doubles, no jsdom); client logic files are tested the same way.
 
-**E2E**: `tests/e2e/server/*.test.ts` — drives a live independent `dsh web` (via `scripts/e2e-live.mjs`) over the `/model-settings` RPC; no browser, no internet. Separate config + script (`pnpm test:e2e`), kept out of the unit run; `pnpm e2e:live` boots a throwaway instance manually.
+**E2E**: `tests/e2e/server/*.test.ts` — drives a live independent `dsh web` over the `/model-settings` RPC via the shared fixture `tests-helpers/e2e/dsh-fixture.ts` (launcher `scripts/e2e-live.mjs` at the repo root); no browser, no internet. `tests/e2e/acceptance.spec.ts` is the playwright acceptance lane (via `tests-helpers/e2e/live.ts`). Separate config + script (`pnpm test:e2e`), kept out of the unit run; `pnpm e2e:live` boots a throwaway instance manually. Running details: `CONTRIBUTING.md` → `E2E tests`.

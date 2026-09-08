@@ -20,6 +20,17 @@ applies to the whole repo.
 * [`packages/dsh-model-settings`](./packages/dsh-model-settings/AGENTS.md) — per-model reasoning effort, context window, and vision input management for llama.cpp models (Cordis plugin, host + client halves).
 * [`packages/dsh-web-search-ddgs`](./packages/dsh-web-search-ddgs/AGENTS.md) — keyless web-search provider for the `web_search` tool on ddgs (host-only Cordis plugin).
 
+## E2E
+
+Shared e2e infra lives in `scripts/e2e-live.mjs` (launcher) + `tests-helpers/e2e/` (`dsh-fixture.ts` for the vitest lane, `live.ts` for the playwright lane); test files and configs stay per-package in `packages/<name>/tests/e2e/`. Run from the package dir: `pnpm test:e2e` (vitest e2e lane; model-settings appends the playwright acceptance lane) and `pnpm e2e:live` (manual throwaway instance).
+
+Hard constraints:
+
+- frozen pnpm installs only — no `pnpm add`, no `--no-frozen-lockfile`
+- never `playwright install` — the shared `~/.cache/ms-playwright` chromium build 1234 for the pinned `@playwright/test@1.62.1` is already cached
+- isolated test `DSH_HOME` only — never the real `~/.dsh`
+- temp state in `.tmp/` (homes under `.tmp/dsh-e2e-*`, playwright artifacts under `.tmp/playwright/<package>`)
+
 ## Hard rules
 
 - **Temporary files go in `./.tmp/`:** all temporary/scratch project files — screenshots, logs, ralph reports, scratch notes, intermediate artifacts — MUST be created in `./.tmp/` (repo root, git-ignored). Never scatter them across the working tree or tracked directories.

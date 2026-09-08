@@ -25,4 +25,4 @@ Host half only (`src/*.ts`; pure logic + composition root, unit-tested):
 
 **Tests**: `tests/unit/server/<module>.test.ts` — vitest node env, in-process spawner/seam doubles, no network.
 
-**E2E**: `tests/e2e/server/*.test.ts` — boots a live independent `dsh web` with the plugin linked (via `scripts/e2e-live.mjs`); the live-search test runs a real ddgs search through the real runner and self-skips when `uv` is absent. `pnpm test:e2e`; `pnpm e2e:live` boots a throwaway instance manually (`--keep` preserves the temp root).
+**E2E**: `tests/e2e/server/*.test.ts` — boots a live independent `dsh web` with the plugin linked via the shared fixture `tests-helpers/e2e/dsh-fixture.ts` (launcher `scripts/e2e-live.mjs` at the repo root); the live-search test runs a real ddgs search through the real runner and self-skips when `uv` is absent. `pnpm test:e2e`; `pnpm e2e:live` boots a throwaway instance manually (`--keep` preserves the temp root).
