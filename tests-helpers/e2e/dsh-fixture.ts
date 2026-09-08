@@ -1,10 +1,12 @@
 /**
- * e2e fixture — drives `scripts/e2e-live.mjs` black-box to bring up an independent
- * `dsh web` on a clean throwaway home, and provides the plumbing to talk to it:
- * RPC over the /model-settings channel (the client's exact wire shape) and warming
- * (seed one model into the instance's settings.yaml and wait for the host to commit).
+ * Shared e2e fixture — drives `scripts/e2e-live.mjs` black-box to bring up an
+ * independent `dsh web` on a clean throwaway home with the package under test
+ * linked into the fresh `web` profile, and provides the plumbing to talk to it:
+ * RPC over any channel (the client's exact wire shape), warming (seed one model
+ * into the instance's settings.yaml and wait for the host to commit), and the
+ * plugin-linkage check.
  */
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
@@ -12,8 +14,7 @@ import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url))
-const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const LAUNCHER = join(REPO_ROOT, 'scripts', 'e2e-live.mjs')
 
 export const E2E_PORT = 3091
@@ -36,14 +37,14 @@ export interface ModelRow {
 interface RpcResult<T> { ok: boolean; value?: T; error?: { code: string; message: string } }
 
 /** A running e2e instance plus the child that owns it (for teardown). */
-export interface DshHandle { url: string; port: number; root: string; cookie: string | null; child: ChildProcess }
+export interface DshHandle { url: string; port: number; root: string; package: string; bin: string; cookie: string | null; child: ChildProcess }
 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 let rpcSeq = 0
 
-/** Spawn the launcher and wait for its ready line + temp-root line + session-cookie line. */
-export async function startDsh(port: number = E2E_PORT): Promise<DshHandle> {
-  const child = spawn('node', [LAUNCHER, '--package', 'dsh-model-settings', '--port', String(port)], { cwd: PACKAGE_ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+/** Spawn the launcher and wait for its ready line + temp-root line + session-cookie line + dsh-binary line. */
+export async function startDsh({ packageName, port = E2E_PORT }: { packageName: string; port?: number }): Promise<DshHandle> {
+  const child = spawn('node', [LAUNCHER, '--package', packageName, '--port', String(port)], { cwd: join(REPO_ROOT, 'packages', packageName), stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
   child.stdout.on('data', (chunk) => { stdout += chunk })
@@ -52,17 +53,19 @@ export async function startDsh(port: number = E2E_PORT): Promise<DshHandle> {
   const readyRe = /dsh e2e instance: (http:\/\/[^\s]+)/
   const rootRe = /temp root: (.+)/
   const cookieRe = /session cookie: (.+)/
+  const binRe = /dsh binary: (.+)/
   const deadline = Date.now() + READY_TIMEOUT_MS
   while (Date.now() < deadline) {
-    if (readyRe.test(stdout) && rootRe.test(stdout) && cookieRe.test(stdout)) break
+    if (readyRe.test(stdout) && rootRe.test(stdout) && cookieRe.test(stdout) && binRe.test(stdout)) break
     if (child.exitCode !== null) throw new Error(`launcher exited early (code ${child.exitCode}); ${stderr.trim() || stdout}`)
     await sleep(POLL_MS)
   }
   const urlMatch = readyRe.exec(stdout)
   const rootMatch = rootRe.exec(stdout)
   const cookieMatch = cookieRe.exec(stdout)
-  if (urlMatch === null || rootMatch === null || cookieMatch === null) throw new Error(`launcher did not reach ready in ${READY_TIMEOUT_MS / 1000}s; ${stderr.trim() || stdout}`)
-  return { url: urlMatch[1].replace('://0.0.0.0', '://127.0.0.1'), port, root: rootMatch[1], cookie: parseSessionCookie(cookieMatch[1]), child }
+  const binMatch = binRe.exec(stdout)
+  if (urlMatch === null || rootMatch === null || cookieMatch === null || binMatch === null) throw new Error(`launcher did not reach ready in ${READY_TIMEOUT_MS / 1000}s; ${stderr.trim() || stdout}`)
+  return { url: urlMatch[1].split('?')[0].replace('://0.0.0.0', '://127.0.0.1'), port, root: rootMatch[1], package: packageName, bin: binMatch[1], cookie: parseSessionCookie(cookieMatch[1]), child }
 }
 
 // The launcher prints the literal `none` for dsh versions whose ready URL needs no session.
@@ -84,11 +87,18 @@ export async function stopDsh(handle: DshHandle): Promise<{ code: number | null;
   return { code, rootRemoved }
 }
 
-/** One RPC call into the /model-settings channel — the client's exact wire shape. */
-export async function rpc<T>(handle: DshHandle, endpoint: string, payload: unknown): Promise<RpcResult<T>> {
+/** Whether the package's plugin is linked into the instance's `web` profile (`dsh plugin …` forwards to pnpm). */
+export function pluginListed(handle: DshHandle): boolean {
+  const env = { ...process.env, DSH_HOME: join(handle.root, '.dsh'), DSH_AGENTS_HOME: join(handle.root, '.agents') }
+  const result = spawnSync(handle.bin, ['plugin', '--profile', 'web', 'ls'], { cwd: handle.root, env, stdio: 'pipe' })
+  return result.stdout?.toString().includes(`@apkawa/${handle.package}`)
+}
+
+/** One RPC call into a channel — the client's exact wire shape. */
+export async function rpc<T>(handle: DshHandle, channel: string, endpoint: string, payload: unknown): Promise<RpcResult<T>> {
   const rpcId = `e2e-live-checks-${++rpcSeq}`
   try {
-    const res = await fetch(`http://127.0.0.1:${handle.port}/model-settings/${endpoint}`, {
+    const res = await fetch(`http://127.0.0.1:${handle.port}/${channel}/${endpoint}`, {
       method: 'POST',
       headers: rpcHeaders(handle),
       body: JSON.stringify({ type: 'client-request', rpcId, method: endpoint, payload }),
@@ -126,7 +136,7 @@ export async function warmModel(handle: DshHandle, routeId: string = ROUTE_ID, m
   const deadline = Date.now() + WARMUP_TIMEOUT_MS
   let committed = false
   while (Date.now() < deadline) {
-    const res = await rpc<ModelRow[]>(handle, 'listModels', {})
+    const res = await rpc<ModelRow[]>(handle, 'model-settings', 'listModels', {})
     if (res.ok === true && findRow(res.value, routeId, modelId) !== undefined) { committed = true; break }
     await sleep(POLL_MS)
   }
