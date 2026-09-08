@@ -13,7 +13,10 @@ describe('model-settings e2e (live dsh web)', () => {
   let handle: DshHandle | undefined
 
   beforeAll(async () => {
-    handle = await startDsh({ packageName: 'dsh-model-settings' })
+    // Pinned to 0.1.1-rc.2 because 0.1.2-rc.1 returns 405 on POST /model-settings/*
+    // (host plugin apply-ordering; owned by .dumbspec/current/fix_0.1.2-rc1).
+    // Full version matrix coverage lives in boot.test.ts.
+    handle = await startDsh({ packageName: 'dsh-model-settings', version: '0.1.1-rc.2' })
   }, 180_000)
 
   afterAll(async () => {
