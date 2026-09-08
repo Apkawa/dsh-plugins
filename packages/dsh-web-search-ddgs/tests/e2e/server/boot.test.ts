@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
-import { startDsh, stopDsh, pluginListed, type DshHandle } from '../dsh-fixture.ts'
+import { startDsh, stopDsh, pluginListed, type DshHandle } from '../../../../../tests-helpers/e2e/dsh-fixture.ts'
 
 /**
  * Live e2e: an independent `dsh web` boots with this plugin linked into the
@@ -10,7 +10,7 @@ describe('web-search-ddgs e2e (live dsh web)', () => {
   let handle: DshHandle | undefined
 
   beforeAll(async () => {
-    handle = await startDsh()
+    handle = await startDsh({ packageName: 'dsh-web-search-ddgs' })
   }, 180_000)
 
   afterAll(async () => {
@@ -25,7 +25,7 @@ describe('web-search-ddgs e2e (live dsh web)', () => {
   })
 
   it('serves the web app over HTTP 200', async () => {
-    const response = await fetch(handle!.url)
+    const response = await fetch(handle!.url, handle!.cookie === null ? undefined : { headers: { cookie: handle!.cookie } })
     expect(response.status).toBe(200)
   })
 })
