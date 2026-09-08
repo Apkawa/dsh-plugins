@@ -22,14 +22,15 @@ applies to the whole repo.
 
 ## E2E
 
-Shared e2e infra lives in `scripts/e2e-live.mjs` (launcher) + `tests-helpers/e2e/` (`dsh-fixture.ts` for the vitest lane, `live.ts` for the playwright lane); test files and configs stay per-package in `packages/<name>/tests/e2e/`. Run from the package dir: `pnpm test:e2e` (vitest e2e lane; model-settings appends the playwright acceptance lane) and `pnpm e2e:live` (manual throwaway instance).
+Shared e2e infra: a single plumbing core in `tests-helpers/e2e/dsh.ts` (`launchDsh` / `stopDsh`, `resolveDshBinary`, `ensureDshVersion`), thin per-lane wrappers — `tests-helpers/e2e/dsh-fixture.ts` (vitest lane) and `tests-helpers/e2e/live.ts` (playwright lane) — and the manual CLI `scripts/e2e-live.ts` (`--package` required, `--port` default 3081, `--keep`, `--version` default `0.1.1-rc.2`). Test files and configs stay per-package in `packages/<name>/tests/e2e/`; boot smoke suites run the version matrix via `describe.each(E2E_DSH_VERSIONS)` (`0.1.1-rc.2`, `0.1.2-rc.1`); RPC/acceptance lanes are pinned to `0.1.1-rc.2` until the 0.1.2-rc.1 405 is fixed (`.dumbspec/current/fix_0.1.2-rc1`). Run from the package dir: `pnpm test:e2e` (vitest e2e lane; model-settings appends the playwright acceptance lane) and `pnpm e2e:live` (manual throwaway instance).
 
 Hard constraints:
 
-- frozen pnpm installs only — no `pnpm add`, no `--no-frozen-lockfile`
+- frozen pnpm installs only — no `pnpm add`, no `--no-frozen-lockfile` (exception: auto-provisioned throwaway projects under `.tmp/dsh-versions/<version>`)
 - never `playwright install` — the shared `~/.cache/ms-playwright` chromium build 1234 for the pinned `@playwright/test@1.62.1` is already cached
 - isolated test `DSH_HOME` only — never the real `~/.dsh`
-- temp state in `.tmp/` (homes under `.tmp/dsh-e2e-*`, playwright artifacts under `.tmp/playwright/<package>`)
+- temp state in `.tmp/` (homes under `.tmp/dsh-e2e-*`, provisioned versions under `.tmp/dsh-versions/<version>`, playwright artifacts under `.tmp/playwright/<package>`)
+- test files import the shared helpers via the `@root/tests-helpers/…` alias (vitest `resolve.alias`, package tsconfig `paths`)
 
 ## Hard rules
 
