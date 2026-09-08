@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
 import type { Locator } from '@playwright/test'
-import { launchPluginTestHome, trackConsoleErrors } from './live'
+import { launchPluginTestHome, trackConsoleErrors } from '../../../../tests-helpers/e2e/live.ts'
 
 // Keyless smoke on dsh 0.1.1-rc.2: the plugin's Model settings section renders its
 // empty state, its client registers in the boot manifest, and nothing errors console-side.
 test('keyless smoke shows the Model settings empty state', async ({ page }) => {
-  const home = await launchPluginTestHome()
+  const home = await launchPluginTestHome('dsh-model-settings')
   const errors = trackConsoleErrors(page)
   try {
     // 0.1.1-rc.2 prints a tokenless ready URL; use it as-is.

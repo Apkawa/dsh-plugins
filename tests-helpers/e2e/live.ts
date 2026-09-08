@@ -6,16 +6,15 @@
 //   dsh plugin --profile web add <package>   # before boot; link dep, no registry
 //   dsh web --port 0 --no-open               # ready line: "dsh web: http://127.0.0.1:<port>"
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import readline from 'node:readline'
 import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import type { Page } from '@playwright/test'
 
-// ESM: __dirname is unavailable; this file lives in tests/e2e/, two levels below the package root.
-const packageDir = fileURLToPath(new URL('../..', import.meta.url))
-const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url))
+// ESM: __dirname is unavailable; this file lives in tests-helpers/e2e/, two levels below the repo root.
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 const BOOT_TIMEOUT_MS = 20_000
 const STOP_TIMEOUT_MS = 5_000
@@ -23,12 +22,13 @@ const STOP_TIMEOUT_MS = 5_000
 const READY_LINE = /dsh web: (http:\/\/[^\s]+)/
 const KEYLESS_STRIP = ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DASHSCOPE_API_KEY', 'DSH_API_KEY']
 
-export async function launchPluginTestHome(): Promise<{ url: string; stop: () => Promise<void> }> {
+export async function launchPluginTestHome(packageName: string): Promise<{ url: string; stop: () => Promise<void> }> {
+  const packageDir = join(repoRoot, 'packages', packageName)
   const bin = resolveDshBinary()
   const root = createTempRoot()
   const env = childEnv(root)
-  ensureBuilt(env)
-  addPlugin(bin, root, env)
+  ensureBuilt(packageDir, env)
+  addPlugin(bin, root, env, packageDir)
   const home = await bootWeb(bin, root, env)
   return { url: home.url, stop: () => stopHome(home.child, root) }
 }
@@ -84,16 +84,26 @@ function childEnv(root: string): NodeJS.ProcessEnv {
   return env
 }
 
-function ensureBuilt(env: NodeJS.ProcessEnv): void {
-  const artifacts = ['index.js', 'client.js']
-  if (artifacts.every((name) => existsSync(join(packageDir, 'lib', name)))) return
+function ensureBuilt(packageDir: string, env: NodeJS.ProcessEnv): void {
+  const artifacts = requiredArtifacts(packageDir)
+  if (artifacts.every((name) => existsSync(join(packageDir, name)))) return
   const build = spawnSync('pnpm', ['build'], { cwd: packageDir, env, stdio: 'pipe' })
   if (build.error !== undefined) throw new Error(`"pnpm build" failed to start: ${build.error.message}`)
-  const stillMissing = artifacts.filter((name) => !existsSync(join(packageDir, 'lib', name)))
+  const stillMissing = artifacts.filter((name) => !existsSync(join(packageDir, name)))
   if (stillMissing.length > 0) throw new Error(`built artifacts still missing after "pnpm build": ${stillMissing.join(', ')}`)
 }
 
-function addPlugin(bin: string, root: string, env: NodeJS.ProcessEnv): void {
+// Same rule as the shared launcher: lib/index.js is always required; lib/client.js
+// additionally when the package's exports map has a ./client key.
+function requiredArtifacts(packageDir: string): string[] {
+  const packageJson = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as { exports?: Record<string, unknown> }
+  const artifacts = ['lib/index.js']
+  const exportsMap = packageJson.exports
+  if (exportsMap !== null && typeof exportsMap === 'object' && Object.prototype.hasOwnProperty.call(exportsMap, './client')) artifacts.push('lib/client.js')
+  return artifacts
+}
+
+function addPlugin(bin: string, root: string, env: NodeJS.ProcessEnv, packageDir: string): void {
   const result = spawnSync(bin, ['plugin', '--profile', 'web', 'add', packageDir], { cwd: root, env, stdio: 'pipe' })
   if (result.error !== undefined) throw new Error(`"dsh plugin add" failed to start: ${result.error.message}`)
   if (result.status !== 0) throw new Error(`"dsh plugin --profile web add" exited with code ${result.status}\n${result.stdout.toString()}\n${result.stderr.toString()}`)
