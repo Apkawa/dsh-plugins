@@ -3,7 +3,7 @@ import {
   startDsh, stopDsh, rpc, warmModel, findRow, writeSettings, startJsonServer, sleep,
   ROUTE_ID, MODEL_ID,
   type DshHandle, type ModelRow,
-} from '../../../../../tests-helpers/e2e/dsh-fixture.ts'
+} from '@root/tests-helpers/e2e/dsh-fixture.ts'
 
 /** A dedicated vision route so the autofill assertions never mix with the warm model's stored parts. */
 const VISION_ROUTE_ID = 'e2e-vision'

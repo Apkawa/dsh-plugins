@@ -1,27 +1,27 @@
 /**
- * Shared e2e fixture — drives `scripts/e2e-live.mjs` black-box to bring up an
- * independent `dsh web` on a clean throwaway home with the package under test
- * linked into the fresh `web` profile, and provides the plumbing to talk to it:
- * RPC over any channel (the client's exact wire shape), warming (seed one model
- * into the instance's settings.yaml and wait for the host to commit), and the
- * plugin-linkage check.
+ * Vitest e2e fixture — a thin wrapper over the shared launch core
+ * (`tests-helpers/e2e/dsh.ts`): `startDsh` is `launchDsh` in an e2e-shaped
+ * signature (port defaults to 0 — the core reads the real port from the ready
+ * URL) and `stopDsh`/`DshHandle` come straight from the core. The domain
+ * helpers below operate on the in-process `DshHandle` the core hands back:
+ * RPC over any channel (the client's exact wire shape), warming (seed one
+ * model into the instance's settings.yaml and wait for the host to commit),
+ * the plugin-linkage check, settings writes, and a local JSON stand-in server.
  */
-import { spawn, spawnSync } from 'node:child_process'
-import type { ChildProcess } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
-import { existsSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { launchDsh, stopDsh } from './dsh.ts'
+import type { DshHandle } from './dsh.ts'
 
-const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
-const LAUNCHER = join(REPO_ROOT, 'scripts', 'e2e-live.mjs')
+export type { DshHandle }
+export { stopDsh }
 
-export const E2E_PORT = 3091
 export const ROUTE_ID = 'e2e'
 export const MODEL_ID = 'e2e-model'
 
-const READY_TIMEOUT_MS = 120_000
 const WARMUP_TIMEOUT_MS = 30_000
 const POLL_MS = 500
 
@@ -36,55 +36,12 @@ export interface ModelRow {
 
 interface RpcResult<T> { ok: boolean; value?: T; error?: { code: string; message: string } }
 
-/** A running e2e instance plus the child that owns it (for teardown). */
-export interface DshHandle { url: string; port: number; root: string; package: string; bin: string; cookie: string | null; child: ChildProcess }
-
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 let rpcSeq = 0
 
-/** Spawn the launcher and wait for its ready line + temp-root line + session-cookie line + dsh-binary line. */
-export async function startDsh({ packageName, port = E2E_PORT }: { packageName: string; port?: number }): Promise<DshHandle> {
-  const child = spawn('node', [LAUNCHER, '--package', packageName, '--port', String(port)], { cwd: join(REPO_ROOT, 'packages', packageName), stdio: ['ignore', 'pipe', 'pipe'] })
-  let stdout = ''
-  let stderr = ''
-  child.stdout.on('data', (chunk) => { stdout += chunk })
-  child.stderr.on('data', (chunk) => { stderr += chunk })
-
-  const readyRe = /dsh e2e instance: (http:\/\/[^\s]+)/
-  const rootRe = /temp root: (.+)/
-  const cookieRe = /session cookie: (.+)/
-  const binRe = /dsh binary: (.+)/
-  const deadline = Date.now() + READY_TIMEOUT_MS
-  while (Date.now() < deadline) {
-    if (readyRe.test(stdout) && rootRe.test(stdout) && cookieRe.test(stdout) && binRe.test(stdout)) break
-    if (child.exitCode !== null) throw new Error(`launcher exited early (code ${child.exitCode}); ${stderr.trim() || stdout}`)
-    await sleep(POLL_MS)
-  }
-  const urlMatch = readyRe.exec(stdout)
-  const rootMatch = rootRe.exec(stdout)
-  const cookieMatch = cookieRe.exec(stdout)
-  const binMatch = binRe.exec(stdout)
-  if (urlMatch === null || rootMatch === null || cookieMatch === null || binMatch === null) throw new Error(`launcher did not reach ready in ${READY_TIMEOUT_MS / 1000}s; ${stderr.trim() || stdout}`)
-  return { url: urlMatch[1].split('?')[0].replace('://0.0.0.0', '://127.0.0.1'), port, root: rootMatch[1], package: packageName, bin: binMatch[1], cookie: parseSessionCookie(cookieMatch[1]), child }
-}
-
-// The launcher prints the literal `none` for dsh versions whose ready URL needs no session.
-function parseSessionCookie(value: string): string | null {
-  if (value === 'none') return null
-  return value
-}
-
-/** SIGTERM the launcher; wait for its exit and for it to remove its temp root. */
-export async function stopDsh(handle: DshHandle): Promise<{ code: number | null; rootRemoved: boolean }> {
-  handle.child.kill('SIGTERM')
-  const code = await onceExit(handle.child)
-  let rootRemoved = false
-  const deadline = Date.now() + 5_000
-  while (Date.now() < deadline) {
-    if (!existsSync(handle.root)) { rootRemoved = true; break }
-    await sleep(200)
-  }
-  return { code, rootRemoved }
+/** Bring up an isolated `dsh web` for `packageName`; port 0 → the core reports the port it actually bound. */
+export async function startDsh({ packageName, version, port = 0 }: { packageName: string; version?: string; port?: number }): Promise<DshHandle> {
+  return launchDsh({ packageName, port, ...(version === undefined ? {} : { version }) })
 }
 
 /** Whether the package's plugin is linked into the instance's `web` profile (`dsh plugin …` forwards to pnpm). */
@@ -169,8 +126,4 @@ export async function startJsonServer(body: string): Promise<{ url: string; stop
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('json server has no TCP address')
   return { url: `http://127.0.0.1:${address.port}`, stop: () => new Promise(resolve => server.close(() => resolve())) }
-}
-
-function onceExit(proc: ChildProcess): Promise<number | null> {
-  return new Promise(resolve => proc.once('exit', resolve))
 }

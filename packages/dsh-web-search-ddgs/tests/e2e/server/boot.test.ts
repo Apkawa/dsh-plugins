@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
-import { startDsh, stopDsh, pluginListed, type DshHandle } from '../../../../../tests-helpers/e2e/dsh-fixture.ts'
+import { startDsh, stopDsh, pluginListed, type DshHandle } from '@root/tests-helpers/e2e/dsh-fixture.ts'
 
 /**
  * Live e2e: an independent `dsh web` boots with this plugin linked into the
