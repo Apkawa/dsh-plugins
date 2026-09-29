@@ -4,7 +4,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "types": []
+    "types": [],
+    "paths": {
+      // Type-check only: the store package is a dsh platform seed at runtime
+      // (resolved by the shell's module loader), not an npm devDependency.
+      "@deepseek-ai/dsh-client-store": ["../../dsh/packages/client/store"]
+    }
   },
   "include": ["src/client"],
   "exclude": ["tests"]

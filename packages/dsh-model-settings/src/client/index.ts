@@ -10,7 +10,8 @@
  */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import { createSnapshotStore, type ClientContext, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { ClientContext, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { ModelSettingsCardController } from './controller.ts'
 import { ModelSettingsCard } from './card.tsx'
 import { ReasoningSectionController } from './reasoning-controller.ts'

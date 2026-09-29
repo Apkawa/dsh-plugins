@@ -7,25 +7,20 @@ import { transform } from 'lightningcss'
 /** The plugin id (the package name) — registered with the client module loader. */
 const PLUGIN_ID = '@apkawa/dsh-model-settings'
 
-/** Module specifiers the dsh web shell shares into its frozen module table. */
+/** Module specifiers the dsh web shell shares into its frozen module table (union of the 0.1.1-rc.2 and 0.1.2-rc.1 seed lists). */
 const PLATFORM_MODULES = [
   'react',
   'react/jsx-runtime',
   'react-dom',
   'react-dom/client',
   '@deepseek-ai/cordis',
+  '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives',
-  '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
 ] as const
 
-/** Externals resolved from the loader module table: platform seeds + runtime store exemption. */
-const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, '@deepseek-ai/dsh-client-runtime/client']
-
 function isExternal(source: string): boolean {
-  return (CLIENT_EXTERNALS as readonly string[]).includes(source)
+  return (PLATFORM_MODULES as readonly string[]).includes(source)
 }
 
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
@@ -65,7 +60,7 @@ export default defineConfig({
   target: 'es2024',
   dts: true,
   clean: false,
-  external: [...CLIENT_EXTERNALS],
+  external: [...PLATFORM_MODULES],
   // Bundle my own modules; keep only the loader module-table entries external.
   noExternal: (id: string) => (isExternal(id) ? undefined : true),
   plugins: [{
@@ -95,7 +90,21 @@ export default defineConfig({
   }],
   outputOptions: {
     entryFileNames: 'client.js',
-    banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(PLUGIN_ID)}, factory: (require) => {`,
+    // Dual-version store fallback: on 0.1.2-rc.1 the store is a static platform
+    // seed (answered directly); on 0.1.1-rc.2 the seed word is unknown to the
+    // loader, which throws synchronously, so the wrapper falls back to the old
+    // parser-preloaded runtime specifier. Every other specifier routes through
+    // the original `require` unchanged.
+    banner: [
+      `window.__ModuleLoader__.load({ id: ${JSON.stringify(PLUGIN_ID)}, factory: (require) => {`,
+      'var __nq = require;',
+      'var require = function (spec) {',
+      "  if (spec === '@deepseek-ai/dsh-client-store') {",
+      "    try { return __nq(spec) } catch { return __nq('@deepseek-ai/dsh-client-runtime/client') }",
+      '  }',
+      '  return __nq(spec)',
+      '};',
+    ].join('\n'),
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },

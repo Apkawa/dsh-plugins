@@ -257,13 +257,17 @@ export function apply(ctx: Context): void {
     })
 
     // RPC channel for the browser card; only when a connection transport is present,
-    // so a host without one still mounts the settings and watcher halves. The effect's
-    // execute registers the channel and returns its disposer as the fiber cleanup.
-    const conn = ctx.get('connection') as ConnectionRpcHandle | undefined
-    if (conn !== undefined) {
-      ctx.effect(async () => {
-        return await conn.rpc.handle(CHANNEL, makeRpcHandler(store), { authority: 'trusted-host' })
+    // so a host without one still mounts the settings and watcher halves. The inject
+    // defers this row until the connection service exists — on 0.1.2-rc.1 the profile
+    // plugins apply before the web client-connection row activates, so a plain
+    // ctx.get('connection') at apply time sees nothing and the channel never registers.
+    // The effect's execute registers the channel and returns its disposer as the
+    // fiber cleanup (re-run if the connection service is ever re-provided).
+    sctx.inject(['connection'], connCtx => {
+      connCtx.effect(async () => {
+        const conn = connCtx.get('connection') as ConnectionRpcHandle
+        return conn.rpc.handle(CHANNEL, makeRpcHandler(store), { authority: 'trusted-host' })
       }, 'model-settings: /model-settings channel')
-    }
+    })
   })
 }

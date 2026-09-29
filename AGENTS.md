@@ -11,30 +11,31 @@
 * `docs/ai/` - reference notes for AI sessions (key moments, links into dsh source)
 * `examples/tmp/dsh-docs` - reference for deepseek-harness docs (another symlink dsh/docs/)
 
-## Project structure
+## Projects
 
-All current work lives in `packages/dsh-model-settings/` — a Cordis plugin with two halves, built by one command (`pnpm build` = `tsc -p tsconfig.json` → host into `lib/`, then `tsdown` → client bundle). Host changes need a full dsh web restart; client-only changes need a page reload.
+Each plugin is a package under `packages/<name>/` and owns its `AGENTS.md` for
+project structure, build, and test details — the root file keeps only what
+applies to the whole repo.
 
-**Host half** (`src/*.ts`; pure logic + composition root, unit-tested):
+* [`packages/dsh-model-settings`](./packages/dsh-model-settings/AGENTS.md) — per-model reasoning effort, context window, and vision input management for llama.cpp models (Cordis plugin, host + client halves).
+* [`packages/dsh-web-search-ddgs`](./packages/dsh-web-search-ddgs/AGENTS.md) — keyless web-search provider for the `web_search` tool on ddgs (host-only Cordis plugin).
 
-* `index.ts` — composition root: registers the `model-settings` section, the `settings/updated` watcher → autofill, and the `/model-settings` RPC channel (`makeRpcHandler`; every error goes through `rpcFailure`, which must stay carrier-conformant).
-* `probe.ts` / `props.ts` / `round.ts` — fetch `<baseURL>/v1/models`, parse INI presets (`ctx-size`, else `fit-ctx`), round down to the thousand.
-* `settings-io.ts` — `SettingsStore` seam over dsh settings + persist ops.
-* `autofill.ts` — batch autofill with self-cycle guard.
-* `efforts.ts` — `THINKING_LEVELS`, `validateEfforts`, `planReasoningWrite` (empty efforts = clear → writes dsh's canonical `false`).
-* `model-save.ts` — one Save commits efforts + ctx together (`contextWindow: null` drops the stored key).
-* `log.ts` — `dbg` wrapper.
+## E2E
 
-**Client half** (`src/client/*`; React, no jsdom — pure logic lives in `.ts` files that are unit-tested):
+Shared e2e infra: a single plumbing core in `tests-helpers/e2e/dsh.ts` (`launchDsh` / `stopDsh`, `resolveDshBinary`, `ensureDshVersion`), thin per-lane wrappers — `tests-helpers/e2e/dsh-fixture.ts` (vitest lane) and `tests-helpers/e2e/live.ts` (playwright lane) — and the manual CLI `scripts/e2e-live.ts` (`--package` required, `--port` default 3081, `--keep`, `--version` default `0.1.1-rc.2`). Test files and configs stay per-package in `packages/<name>/tests/e2e/`; boot smoke suites run the version matrix via `describe.each(E2E_DSH_VERSIONS)` (`0.1.1-rc.2`, `0.1.2-rc.1`); the RPC and acceptance lanes are version matrices too — the 0.1.2-rc.1 host 405 (profile plugins apply before the web connection row, so the RPC channel never registered) is worked around plugin-side: the channel row defers on `ctx.inject(['connection'], …)`; the host ordering bug itself remains in dsh, tracked separately (`.dumbspec/current/fix_0.1.2-rc1`). Run from the package dir: `pnpm test:e2e` (vitest e2e lane; model-settings appends the playwright acceptance lane) and `pnpm e2e:live` (manual throwaway instance).
 
-* `index.ts` — registers the reasoning section (`settings.section`, label "Model settings"); EffortButton + v1 card kept verbatim behind `CLIENT_ENABLED = false`.
-* `ReasoningSection.tsx` — per-model accordion: seven thinking levels, context-window field + Refresh, one Save.
-* `reasoning-controller.ts` — RPC client over `/model-settings` + snapshot store.
-* `context-format.ts` / `efforts-editor.ts` — K/M parse/format; draft state (`draftsDirty`).
+Hard constraints:
 
-**Tests**: `tests/unit/{server|client}/<module>.test.ts` — host-side modules under `server/`, client-side (`src/client`) under `client/` (vitest node env, FakeStore/FakeConnection doubles, no jsdom); client logic files are tested the same way.
+- frozen pnpm installs only — no `pnpm add`, no `--no-frozen-lockfile` (exception: auto-provisioned throwaway projects under `.tmp/dsh-versions/<version>`)
+- never `playwright install` — the shared `~/.cache/ms-playwright` chromium build 1234 for the pinned `@playwright/test@1.62.1` is already cached
+- isolated test `DSH_HOME` only — never the real `~/.dsh`
+- temp state in `.tmp/` (homes under `.tmp/dsh-e2e-*`, provisioned versions under `.tmp/dsh-versions/<version>`, playwright artifacts under `.tmp/playwright/<package>`)
+- test files import the shared helpers via the `@root/tests-helpers/…` alias (vitest `resolve.alias`, package tsconfig `paths`)
 
-**E2E**: `tests/e2e/*.test.ts` — drives a live independent `dsh web` (via `scripts/e2e-live.mjs`) over the `/model-settings` RPC; no browser, no internet. Separate config + script (`pnpm test:e2e`), kept out of the unit run.
+## Hard rules
+
+- **Temporary files go in `./.tmp/`:** all temporary/scratch project files — screenshots, logs, ralph reports, scratch notes, intermediate artifacts — MUST be created in `./.tmp/` (repo root, git-ignored). Never scatter them across the working tree or tracked directories.
+
 
 ## Principles
 
@@ -140,3 +141,10 @@ function requireConfig(input: unknown) {
 ## Type Checking
 
 - Always run `pnpm typecheck` from package directories (e.g., `packages/dsh-model-settings`), never `tsc` directly.
+
+## pnpm in the Sandbox
+
+- Caches are kept inside the project directory, not globally 
+- for pnpm the env var `pnpm_config_store_dir=./.cache/pnpm/v11` is set.
+
+`pnpm_config_store_dir=./.cache/.pnpm/v11 pnpm install`

@@ -39,7 +39,7 @@ The mechanism (non-obvious; verify against the code):
    (`declare module '*.module.css' { const classes: Record<string,string>; export default classes }`) —
    sample at `examples/tmp/ui-status-label/src/css-modules.d.ts`.
 4. Bundle purity gate: value-imports of `@deepseek-ai/*` are allowed only from PLATFORM_MODULES
-   (react, cordis, ui-slots, web-react, ui-primitives, runtime/client, …) — everything else is
+   (react, cordis, dsh-client-store, ui-slots, ui-primitives, …) — everything else is
    inlined into `lib/client.js`. Dependencies like clsx get bundled inside; per KISS prefer a
    local helper `cx(...parts) = parts.filter(Boolean).join(' ')` over a new dependency.
 
