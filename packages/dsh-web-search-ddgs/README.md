@@ -9,7 +9,7 @@ provider uses — so the `web_search` tool runs on
 
 - Registers the `ddgs` search provider on `ctx.web` (host-side Cordis plugin, no client half).
 - Runs ddgs in a **managed uv venv** (default `~/.cache/dsh-web-search-ddgs/venv`): provisioned lazily on first search (`uv venv` + `uv pip install ddgs`), self-healed if the ddgs install goes missing.
-- Default backend: **duckduckgo** (keyless). Yandex is optional — it is disabled upstream in ddgs and this package re-enables it at runtime when `backend: yandex`.
+- Backends: **duckduckgo** (default), `bing`, and `yandex` all work on current ddgs (9.16.0, latest). `yandex` is upstream-disabled in ddgs and re-registered at runtime by `ddgs-search.py` (`ENGINES['text']['yandex'] = Yandex`) only when `backend: yandex`. Known quirks: `bing` occasionally returns concatenated snippet fields (a ddgs parser quirk), and live searches can flakily fail with `DDGSException: No results found` under load (no retry in the suite).
 - **Serializes** searches: the tool fires up to 4 queries concurrently, and rapid bursts trip backend rate limits (the `No results found` DDGSException).
 
 ## Setup
@@ -42,17 +42,25 @@ Plugin config (`web-search-ddgs` section in dsh settings):
 
 ## Provider selection
 
-The `ctx.web` seam resolves the provider at call time. A configured id wins —
+The `ctx.web` seam (`WebSearchProvider` = `{ id, available(), search() }`,
+registered via `ctx.web.registerSearchProvider`) is unchanged between dsh
+0.1.2-rc.1 and 0.2.0-rc.2 — byte-identical types in
+`@deepseek-ai/dsh-web@0.2.0-rc.2`. This plugin registers through a Cordis
+plugin: `inject: ['web']` plus `apply()` calling `ctx.web.registerSearchProvider(...)`.
+
+The seam resolves the provider at call time. A configured id wins —
 `searchProvider` from the `web` service config, falling back to the
 `DSH_WEB_SEARCH_PROVIDER` env var only while the config field is unset. With
 no configured id, exactly one usable registered provider is auto-selected;
-several usable ones give `WEB_PROVIDER_AMBIGUOUS`.
+several usable ones give `WEB_PROVIDER_AMBIGUOUS`. There is no CLI flag for
+provider selection.
 
 In practice the stock `web` profile needs an explicit pin, for two reasons:
 
-- `dsh-base` sets `searchProvider: deepseek-official` in the `web` service
-  config — config beats env, so `export DSH_WEB_SEARCH_PROVIDER=ddgs` alone
-  does **not** override the pin.
+- `dsh-base` pins `searchProvider: deepseek-official` (and `fetchProvider: http`)
+  in the `web` service config — config beats env, so merely inserting the
+  provider row (as `cordis.patch.yml` does) does **not** switch selection, and
+  `export DSH_WEB_SEARCH_PROVIDER=ddgs` alone does not override the pin.
 - The built-in DeepSeek provider reports `available()` even without a key (the
   key is resolved at search time), so it stays selected and `web_search` then
   fails with a missing-key error.
@@ -65,6 +73,7 @@ bundle layer:
 - id: web
   config:
     searchProvider: ddgs
+    fetchProvider: http
 ```
 
 The entry replaces the `web` service config map, so keep any other needed keys
@@ -89,8 +98,8 @@ provisioning, and each search (`search:` … `search ok: N items`).
 
 ## Tests
 
-- `pnpm test` — unit tests (in-process doubles for the spawner/seam; no network).
-- `pnpm test:e2e` — live e2e: boots an independent `dsh web` with the plugin linked (boot) and runs a real ddgs search through the real runner (self-skips when `uv` is absent).
+- `pnpm test` — unit tests (`tests/unit/server/**`; in-process doubles for the spawner/seam; no network).
+- `pnpm test:e2e` — live e2e (`tests/e2e/server/**`; 120 s timeouts): `boot.test.ts` boots a live `dsh web` (0.2.0-rc.2, via `E2E_DSH_VERSIONS`) and asserts the plugin is listed and serves HTTP 200; `live-search.test.ts` runs a real duckduckgo search through the real runner; `backends.test.ts` runs one real search per backend over `duckduckgo`, `bing`, and `yandex` against a single shared venv. The live-search and backends tests self-skip when `uv` is absent, and both set `process.env.UV_CACHE_DIR` to the repo-local `.cache/uv` because the sandbox makes `~/.cache/uv` read-only.
 - `pnpm e2e:live` — manually boots a throwaway `dsh web` on a clean home (the e2e launcher; `--keep` preserves the temp root).
 - `pnpm typecheck` — strict tsc over `src/`.
 

@@ -1,6 +1,6 @@
 {
   "name": "@apkawa/dsh-web-search-ddgs",
-  "description": "ddgs-backed web search provider for dsh (yandex backend via a managed uv venv)",
+  "description": "ddgs-backed web search provider for dsh (default duckduckgo backend via a managed uv venv)",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",

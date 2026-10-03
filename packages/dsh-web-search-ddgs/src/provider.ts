@@ -19,7 +19,7 @@ export interface DdgsSearchProviderOptions {
 /**
  * A ddgs-backed `WebSearchProvider`. Searches are serialized through an
  * internal queue: the tool fires up to four queries concurrently, and rapid
- * bursts are exactly what trigger yandex' rate limiter (see research notes).
+ * bursts trip the active backend's rate limits (see research notes).
  */
 export class DdgsSearchProvider implements WebSearchProvider {
   readonly id = PROVIDER_ID
