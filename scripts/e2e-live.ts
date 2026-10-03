@@ -85,7 +85,7 @@ function flat(error: unknown): string {
 type Args = { port: number; keep: boolean; packageName: string; version: string }
 
 function parseArgs(argv: string[]): Args {
-  const options: { port: number; keep: boolean; packageName: string | null; version: string } = { port: 3081, keep: false, packageName: null, version: '0.1.1-rc.2' }
+  const options: { port: number; keep: boolean; packageName: string | null; version: string } = { port: 3081, keep: false, packageName: null, version: '0.2.0-rc.2' }
   let index = 0
   while (index < argv.length) {
     const token = argv[index]

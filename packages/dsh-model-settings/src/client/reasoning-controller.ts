@@ -18,7 +18,7 @@
  */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 
 /** The thinking levels dsh offers, in escalation order (mirrors the Host `efforts` module). */
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const

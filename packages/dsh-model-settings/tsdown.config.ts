@@ -7,7 +7,7 @@ import { transform } from 'lightningcss'
 /** The plugin id (the package name) — registered with the client module loader. */
 const PLUGIN_ID = '@apkawa/dsh-model-settings'
 
-/** Module specifiers the dsh web shell shares into its frozen module table (union of the 0.1.1-rc.2 and 0.1.2-rc.1 seed lists). */
+/** Module specifiers the dsh web shell shares into its frozen module table (the 0.2.0-rc.2 `PLATFORM_MODULES` seed list, `packages/client/web/src/platform.ts`). */
 const PLATFORM_MODULES = [
   'react',
   'react/jsx-runtime',
@@ -90,21 +90,9 @@ export default defineConfig({
   }],
   outputOptions: {
     entryFileNames: 'client.js',
-    // Dual-version store fallback: on 0.1.2-rc.1 the store is a static platform
-    // seed (answered directly); on 0.1.1-rc.2 the seed word is unknown to the
-    // loader, which throws synchronously, so the wrapper falls back to the old
-    // parser-preloaded runtime specifier. Every other specifier routes through
-    // the original `require` unchanged.
-    banner: [
-      `window.__ModuleLoader__.load({ id: ${JSON.stringify(PLUGIN_ID)}, factory: (require) => {`,
-      'var __nq = require;',
-      'var require = function (spec) {',
-      "  if (spec === '@deepseek-ai/dsh-client-store') {",
-      "    try { return __nq(spec) } catch { return __nq('@deepseek-ai/dsh-client-runtime/client') }",
-      '  }',
-      '  return __nq(spec)',
-      '};',
-    ].join('\n'),
+    // The 0.2.0-rc.2 module table statically seeds every external specifier, so
+    // the factory's `require` answers each one directly.
+    banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(PLUGIN_ID)}, factory: (require) => {`,
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },

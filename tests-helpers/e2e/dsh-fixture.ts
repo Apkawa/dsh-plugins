@@ -3,15 +3,16 @@
  * (`tests-helpers/e2e/dsh.ts`): `startDsh` is `launchDsh` in an e2e-shaped
  * signature (port defaults to 0 — the core reads the real port from the ready
  * URL) and `stopDsh`/`DshHandle` come straight from the core. The domain
- * helpers below operate on the in-process `DshHandle` the core hands back:
- * RPC over any channel (the client's exact wire shape), warming (seed one
- * model into the instance's settings.yaml and wait for the host to commit),
- * the plugin-linkage check, settings writes, and a local JSON stand-in server.
+ * helpers below operate on in-process `DshHandle`s the core hands back:
+ * RPC over arbitrary channels (the client's exact wire shape), warming (seed
+ * one model into the instance's web profile patch and wait for the host to
+ * commit), plugin linkage checks, settings writes, and a local JSON stand-in
+ * server.
  */
 import { spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchDsh, stopDsh } from './dsh.ts'
 import type { DshHandle } from './dsh.ts'
@@ -24,6 +25,8 @@ export const MODEL_ID = 'e2e-model'
 
 const WARMUP_TIMEOUT_MS = 30_000
 const POLL_MS = 500
+// The llm adapter entry the settings document projects; composition is id-keyed, last-match-wins.
+const LLM_ENTRY_ID = 'llm-pi-ai'
 
 /** A model-settings row as returned by the /model-settings handles. */
 export interface ModelRow {
@@ -73,23 +76,25 @@ function rpcHeaders(handle: DshHandle) {
   return { 'content-type': 'application/json', cookie: handle.cookie }
 }
 
-/** Seed one model into the instance's settings.yaml and wait for the host to commit it. */
+/**
+ * Seed one model into the instance's web profile patch and wait for the host
+ * to commit it. dsh 0.2.0 imports settings.yaml exactly once at boot (then
+ * renames it settings.yaml.imported) and never watches it; the live commit
+ * path is the profile's cordis.patch.yml, which the host's config watcher
+ * reconciles (app-boot/config-reload → settings document revision bump).
+ */
 export async function warmModel(handle: DshHandle, routeId: string = ROUTE_ID, modelId: string = MODEL_ID): Promise<void> {
   // baseURL points at a closed local port: any probe the host makes is refused locally
   // and skipped quietly — no internet involved.
-  writeFileSync(
-    join(handle.root, '.dsh', 'settings.yaml'),
-    [
-      'llm-pi-ai:',
-      '  providers:',
-      `    ${routeId}:`,
-      '      api: openai-completions',
-      '      baseURL: http://127.0.0.1:9/v1',
-      '      models:',
-      `        - id: ${modelId}`,
-      '',
-    ].join('\n'),
-  )
+  upsertLlmEntry(handle, [
+    `${LLM_ENTRY_ID}:`,
+    '  providers:',
+    `    ${routeId}:`,
+    '      api: openai-completions',
+    '      baseURL: http://127.0.0.1:9/v1',
+    '      models:',
+    `        - id: ${modelId}`,
+  ].join('\n'))
   const deadline = Date.now() + WARMUP_TIMEOUT_MS
   let committed = false
   while (Date.now() < deadline) {
@@ -97,7 +102,7 @@ export async function warmModel(handle: DshHandle, routeId: string = ROUTE_ID, m
     if (res.ok === true && findRow(res.value, routeId, modelId) !== undefined) { committed = true; break }
     await sleep(POLL_MS)
   }
-  if (!committed) throw new Error(`host did not commit the settings.yaml edit within ${WARMUP_TIMEOUT_MS / 1000}s`)
+  if (!committed) throw new Error(`host did not commit the profile patch edit within ${WARMUP_TIMEOUT_MS / 1000}s`)
 }
 
 /** Find a row by (routeId, modelId); undefined when absent. */
@@ -105,9 +110,49 @@ export function findRow(rows: readonly ModelRow[] | undefined, routeId: string, 
   return (rows ?? []).find(row => row.routeId === routeId && row.modelId === modelId)
 }
 
-/** Replace the instance's settings.yaml (the watcher re-reads on file changes). */
+/** Replace the llm-pi-ai entry in the web profile patch (the host's config watcher reconciles it live). */
 export function writeSettings(handle: DshHandle, yaml: string): void {
-  writeFileSync(join(handle.root, '.dsh', 'settings.yaml'), yaml)
+  upsertLlmEntry(handle, yaml)
+}
+
+// The web profile's patch file: a top-level YAML sequence of { id, config, … }
+// entries applied after every bundle layer, watched live by the host.
+function patchPath(handle: DshHandle): string {
+  return join(handle.root, '.dsh', 'profiles', 'web', 'cordis.patch.yml')
+}
+
+// The llm-pi-ai profile-patch entry for one settings section: the section body
+// becomes the entry's `config` (the field names the llm adapter reads).
+function llmEntryLines(section: string): string[] {
+  const lines = section.trimEnd().split('\n')
+  return [`- id: ${LLM_ENTRY_ID}`, '  config:', ...lines.slice(1).map(line => line === '' ? '' : `  ${line}`)]
+}
+
+// Upsert the llm-pi-ai entry into the web profile patch: replace the matching
+// entry or append one, preserving every other entry and the header comments.
+// String-level on purpose — the file is machine-written, entries start at column
+// 0, and composition is id-keyed last-match-wins, so one well-placed entry suffices.
+function upsertLlmEntry(handle: DshHandle, section: string): void {
+  const path = patchPath(handle)
+  const text = existsSync(path) ? readFileSync(path, 'utf8') : '[]\n'
+  const header: string[] = []
+  const entries: string[][] = []
+  for (const line of text.split('\n')) {
+    if (line.startsWith('- ')) { entries.push([line]); continue }
+    (entries.length === 0 ? header : entries[entries.length - 1]).push(line)
+  }
+  const entry = llmEntryLines(section)
+  const index = entries.findIndex(lines => lines[0]?.startsWith(`- id: ${LLM_ENTRY_ID}`))
+  if (index >= 0) entries[index] = entry
+  if (index < 0) {
+    // The auto-created file is the empty-sequence template; drop its marker and
+    // trailing blanks before appending the entry.
+    let cut = header.length
+    while (cut > 0 && (header[cut - 1] === '' || header[cut - 1].trim() === '[]')) cut -= 1
+    header.length = cut
+    entries.push(entry)
+  }
+  writeFileSync(path, [...header, ...entries.flatMap(lines => lines)].join('\n') + '\n')
 }
 
 /**

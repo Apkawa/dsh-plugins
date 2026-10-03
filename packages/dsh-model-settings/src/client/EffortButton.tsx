@@ -8,8 +8,8 @@
  */
 
 import { useEffect, useState } from 'react'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { currentReasoning, effortChoices, effortLabel, type DirectoryState, type EffortChoice, type Selection } from './effort-button.ts'
 
 /** The inject face: the shared directory (bound to `useDirectory`) + load/select verbs. */

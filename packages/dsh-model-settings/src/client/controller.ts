@@ -12,8 +12,7 @@
  */
 
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 
 /** One candidate model row the card renders. */
 export interface ModelRow {

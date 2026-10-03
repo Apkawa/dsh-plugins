@@ -9,9 +9,9 @@
  * A deployment without the Host half renders nothing useful here.
  */
 
+import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { ClientContext, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ModelSettingsCardController } from './controller.ts'
 import { ModelSettingsCard } from './card.tsx'
 import { ReasoningSectionController } from './reasoning-controller.ts'
@@ -49,6 +49,26 @@ interface RemoteEvents {
   $on(event: 'settings/document-updated', listener: (ns: string, revision: number) => void): () => void
 }
 
+/** The slot registry, as this plugin consumes it: contribute entries into the slots the shell declares.
+ * In 0.2.0 the registry is renderer-owned and typed through ui-renderer's Context
+ * augmentation, which this bundle does not import, so this structural mirror names
+ * only the two methods used; the declaration literals stay checked against the
+ * SlotMap entries declared in slot-contract.ts. */
+interface SlotRegistryFace {
+  register(options: unknown, component: unknown): () => void
+  inject(key: string, callback: () => SlotInjectionEffect): () => void
+}
+
+/** One registration effect: a plain disposer, or a generator yielding disposers (mirrors ui-renderer's SlotInjectionEffect). */
+type SlotInjectionEffect = (() => void) | Iterable<() => void, void, void>
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** The renderer-owned slot registry. */
+    slots: SlotRegistryFace
+  }
+}
+
 /** Required services (cordis fiber inject). */
 export const inject = ['slots', 'connection', 'remote']
 
@@ -57,7 +77,7 @@ export const inject = ['slots', 'connection', 'remote']
  * the v1 card.
  * @param ctx - the browser plugin context.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: Context): void {
   const connection = ctx.get('connection') as ConnectionHandle
 
   // The reasoning section: a top-level settings page editing per-model mappings.
@@ -108,7 +128,7 @@ export function apply(ctx: ClientContext): void {
           name: 'conversation.input.right',
           id: 'reasoning-effort',
           order: 0,
-          inject: (sessionId): EffortButtonFace => {
+          inject: (sessionId: string): EffortButtonFace => {
             const directory = models.directoryFor(sessionId)
             return {
               hooks: { directory: directory.store },

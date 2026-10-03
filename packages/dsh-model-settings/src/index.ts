@@ -1,15 +1,16 @@
 /**
  * The model-settings plugin, node half. It is the composition root: it wires the
- * tested modules (probe, settings-io, autofill) to the dsh seams — registering the
- * `model-settings` section so the settings card appears, observing the `llm-pi-ai`
- * section to autofill new models' contextWindow, and serving the `/model-settings`
- * RPC channel the browser card calls. It computes nothing itself; every rule lives
- * in a module that is unit-tested on its own.
+ * tested modules (probe, settings-io, autofill) to the dsh seams — observing the
+ * `llm-pi-ai` section to autofill new models' contextWindow and serving the
+ * `/model-settings` RPC channel the browser card calls (the settings card itself is
+ * registered client-side). It computes nothing itself; every rule lives in a
+ * module that is unit-tested on its own.
  */
 
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
+import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
-import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { autofill } from './autofill.ts'
 import { dbg } from './log.ts'
 import { fetchModels, type Fetcher } from './probe.ts'
@@ -21,16 +22,12 @@ import { roundDown } from './round.ts'
 
 export const name = 'model-settings'
 
-/** The section this plugin owns; v1 carries no user-editable fields. */
-const NS = settingsNamespace('model-settings')
-/** The llm-pi-ai section we read and patch (owned by the llm adapter). */
-const LLM_NS = settingsNamespace('llm-pi-ai')
+/** The llm-pi-ai section we read and patch (owned by the llm adapter). At runtime
+ * the namespace is the plain profile entry id; the branded cast types it against
+ * the `dsh-settings` `SettingsNamespace` Branded type. */
+const LLM_NS = 'llm-pi-ai' as SettingsNamespace
 /** The logical RPC channel the browser card calls. */
 const CHANNEL = '/model-settings'
-
-/** v1 has no configuration; the section exists only so the settings page shows a card. */
-const ModelSettingsSchema = z.object({}) as z<Record<string, never>>
-const EMPTY_CONFIG: Record<string, never> = {}
 
 /**
  * The one RPC result shape the client unwraps. Errors follow the dsh carrier's
@@ -40,19 +37,62 @@ const EMPTY_CONFIG: Record<string, never> = {}
 type RpcResult = { ok: true; value: unknown } | { ok: false; error: { code: string; message: string; details: Record<string, unknown> } }
 
 /** Build an RPC error in the shape the dsh carrier validates (mirrors its `transportError` catch-all). */
-function rpcFailure(code: 'bad-request' | 'internal', message: string, details: Record<string, unknown>): RpcResult {
+function rpcFailure(code: string, message: string, details: Record<string, unknown>): RpcResult {
   return { ok: false, error: { code, message, details } }
 }
 
-/** The connection transport's host RPC registry, as this plugin consumes it. */
-interface ConnectionRpcHandle {
-  rpc: {
-    handle(
-      channel: string,
-      handler: (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<RpcResult>,
-      options: { authority: 'trusted-host' },
-    ): Promise<() => Promise<void>>
+/** One prefix route the host web server dispatches; the handler owns the full response lifecycle. */
+interface WebRoute {
+  kind: 'prefix'
+  path: string
+  handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
+}
+
+/** The host web server's route registry, as this plugin consumes it. */
+interface WebServerRegistry {
+  register(route: WebRoute): () => void
+}
+
+// The dsh 0.2.0 web apps provide a `webServer` service on plugin contexts; the
+// installed 0.1.x types predate it, so this structural mirror carries the read.
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** The host web server's route registry. */
+    webServer: WebServerRegistry
   }
+}
+
+/** The hmr service's transaction handle, as this plugin consumes it. */
+type HmrFacade = { executing?: { exit(fn: () => void): void } }
+
+// The hmr service is a base-bundle root service on dsh 0.2.0; the installed 0.1.x
+// types predate it, so this structural mirror carries the read. Optional, because
+// other host versions may not provide the service.
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** The host hmr service's transaction handle. */
+    hmr?: HmrFacade
+  }
+}
+
+/** The dsh settings service, as this plugin consumes it: one descriptor read, one path-op write. */
+type SettingsSeam = {
+  describe(): ReadonlyArray<{ ns: SettingsNamespace; value: unknown; revision: number }>
+  mutate(ns: SettingsNamespace, ops: readonly SettingsPathOp[], expectedRevision?: number): Promise<void>
+}
+
+/** The host hmr's executing handle, or undefined when the host provides no such service.
+ * The root-level hmr service is only reachable from a plugin context through `inject`
+ * (a direct `ctx.hmr` read throws on Cordis contexts); the injected callback runs on
+ * the next tick once the service is available, so this is awaited. The host's `emit`
+ * does not await listeners, so the await never blocks the host's in-flight write, and
+ * a host without the service simply never settles this round. */
+async function hmrExecuting(ctx: Context) {
+  let executing: { exit(fn: () => void): void } | undefined
+  await ctx.inject(['hmr'], hctx => {
+    executing = hctx.hmr?.executing
+  })
+  return executing
 }
 
 /** Production fetch seam: the host process's global fetch. */
@@ -71,7 +111,7 @@ function apiKeyFor(route: LlmRouteProfile): string | undefined {
  * llm-pi-ai section and its revision from a descriptor; writes one route's models
  * list through a path op so nothing else in the section is restated or clobbered.
  */
-function makeLlmStore(settings: SettingsProvider): SettingsStore {
+function makeLlmStore(settings: SettingsSeam): SettingsStore {
   return {
     read(): Readonly<{ value: LlmSection; revision: number }> {
       const descriptor = settings.describe().find(row => row.ns === LLM_NS)
@@ -111,8 +151,9 @@ function listReasoningRows(store: SettingsStore): Array<{ routeId: string; model
       // `false` is dsh's explicit non-reasoning spelling (our clear); only a mapping object is shown as levels.
       const raw = model.reasoningEfforts
       const efforts = typeof raw === 'object' && raw !== null ? (raw as ReasoningEfforts) : undefined
-      // Only an array of strings counts as a stored modality list; anything else is shown as absent.
-      const input = Array.isArray(model.input) ? model.input : undefined
+      // Only a non-empty array of strings counts as a stored modality list: `[]` is
+      // schemastery's materialized spelling of an absent array, so it is shown as absent.
+      const input = Array.isArray(model.input) && model.input.length > 0 ? model.input : undefined
       rows.push({ routeId, modelId: model.id, ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}), ...(efforts !== undefined ? { efforts } : {}), ...(input !== undefined ? { input } : {}) })
     }
   }
@@ -233,19 +274,25 @@ export function apply(ctx: Context): void {
   ctx.inject(['settings'], sctx => {
     const store = makeLlmStore(sctx.settings)
 
-    // Register our namespace so the settings page shows a card for it. The card's
-    // data comes from the RPC channel, not this section, so it stays empty in v1.
-    sctx.settings.register(NS, ModelSettingsSchema, { base: EMPTY_CONFIG })
-
     // Watcher: on an llm-pi-ai commit, run one autofill round. The self-cycle guard
     // lives in autofill (a sized model is not re-probed), so a write we made never
-    // schedules another round; the flag only dedupes concurrent commits.
+    // schedules another round; the flag only dedupes concurrent commits. The host
+    // emits this event from inside its HMR transaction, and the round's
+    // `settings.mutate` would open a nested transaction — and that nesting is
+    // AsyncLocalStorage-bound, so no timer or microtask deferral escapes it. The
+    // round therefore runs under the host's own `executing.exit` idiom, which clears
+    // the transaction store for the round's continuations so the persist opens its
+    // own top-level transaction, serialized behind the host's in-flight one.
     let running = false
-    ctx.on('settings/updated', (ns) => {
-      dbg.debug(`settings/updated fired: ns=${ns} isLlmNs=${ns === LLM_NS} running=${running}`)
+    ctx.on('settings/document-updated', (ns, revision) => {
+      dbg.debug(`settings/document-updated fired: ns=${ns} revision=${revision} isLlmNs=${ns === LLM_NS} running=${running}`)
       if (ns !== LLM_NS || running) return
       running = true
-      void autofill({ store, fetcher: productionFetcher, apiKeyFor })
+      void hmrExecuting(ctx)
+        .then(executing => {
+          if (executing === undefined) return undefined
+          return executing.exit(() => autofill({ store, fetcher: productionFetcher, apiKeyFor }))
+        })
         .catch(error => {
           dbg.error('autofill round FAILED:', error)
           ctx.logger.error('model-settings: autofill round failed')
@@ -256,18 +303,111 @@ export function apply(ctx: Context): void {
         })
     })
 
-    // RPC channel for the browser card; only when a connection transport is present,
-    // so a host without one still mounts the settings and watcher halves. The inject
-    // defers this row until the connection service exists — on 0.1.2-rc.1 the profile
-    // plugins apply before the web client-connection row activates, so a plain
-    // ctx.get('connection') at apply time sees nothing and the channel never registers.
-    // The effect's execute registers the channel and returns its disposer as the
-    // fiber cleanup (re-run if the connection service is ever re-provided).
-    sctx.inject(['connection'], connCtx => {
-      connCtx.effect(async () => {
-        const conn = connCtx.get('connection') as ConnectionRpcHandle
-        return conn.rpc.handle(CHANNEL, makeRpcHandler(store), { authority: 'trusted-host' })
-      }, 'model-settings: /model-settings channel')
+    // On dsh 0.2.0-rc.2 the host's `rpc.handle` path never mounts its route: its
+    // register effect reads `webServer` off the connection entry's own context,
+    // whose fiber chain lacks the service, so the effect fails and every
+    // /model-settings request falls through as 404. Mount the channel's prefix
+    // route ourselves, through the host's own proven pattern: inject `webServer`,
+    // then register from the context the injection returns.
+    sctx.inject(['webServer'], webCtx => {
+      const route: WebRoute = {
+        kind: 'prefix',
+        path: CHANNEL,
+        handler: (req, res) => handleChannelRequest(store, req, res),
+      }
+      webCtx.effect(() => webCtx.webServer.register(route), 'model-settings: /model-settings channel')
     })
   })
+}
+
+// The channel's wire contract, mirrored from the dsh 0.2.0-rc.2 host's
+// rpcFetchHandler: POST /model-settings/<endpoint> with a JSON client-request
+// envelope answers one server-response envelope.
+/** The client-request envelope this channel accepts (the dsh carrier's wire shape). */
+type ClientRequest = { type: 'client-request'; rpcId: string; method: string; payload: unknown }
+
+const clientRequestSchema = z.object({
+  type: z.const('client-request'),
+  rpcId: z.string(),
+  method: z.string(),
+  payload: z.any(),
+})
+
+const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
+
+/** The endpoint after the channel prefix; undefined for non-endpoint pathnames. */
+function endpointFromPath(pathname: string): string | undefined {
+  if (!pathname.startsWith(`${CHANNEL}/`)) return undefined
+  const endpoint = pathname.slice(CHANNEL.length + 1)
+  if (endpoint === '') return undefined
+  const segments = endpoint.split('/')
+  if (segments.some(segment => segment === '' || segment === '.' || segment === '..' || !ENDPOINT_SEGMENT_PATTERN.test(segment))) return undefined
+  return endpoint
+}
+
+/** The request content-type's media type: first `;`-delimited part, trimmed, lowercased. */
+function mediaType(contentType: string | string[] | undefined): string | undefined {
+  const value = Array.isArray(contentType) ? contentType[0] : contentType
+  return value?.split(';')[0]?.trim().toLowerCase()
+}
+
+/** Collect the request body stream into a UTF-8 string. */
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', chunk => chunks.push(chunk))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
+/** A plain-text response. */
+function sendText(res: ServerResponse, status: number, body: string): void {
+  res.writeHead(status, { 'content-type': 'text/plain' })
+  res.end(body)
+}
+
+/** A JSON response. */
+function sendJson(res: ServerResponse, status: number, value: unknown): void {
+  res.writeHead(status, { 'content-type': 'application/json' })
+  res.end(JSON.stringify(value))
+}
+
+/** The parsed body's rpcId when the body is an object carrying a string one. */
+function rpcIdOf(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined
+  const id = (body as { rpcId?: unknown }).rpcId
+  return typeof id === 'string' ? id : undefined
+}
+
+/** One request into the channel: validate the envelope, then dispatch to the RPC handler. */
+async function handleChannelRequest(store: SettingsStore, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // The dsh host derives the endpoint from the URL pathname, so parse it the same way.
+  const endpoint = endpointFromPath(new URL(req.url ?? '/', 'http://localhost').pathname)
+  if (req.method !== 'POST' || endpoint === undefined) { sendText(res, 404, 'not found'); return }
+  if (mediaType(req.headers['content-type']) !== 'application/json') { sendText(res, 415, 'content type must be application/json'); return }
+  let body: unknown
+  try {
+    body = JSON.parse(await readBody(req))
+  } catch {
+    sendText(res, 400, 'body is not JSON'); return
+  }
+  const parsed = await clientRequestSchema['~standard'].validate(body)
+  if ('issues' in parsed) {
+    sendJson(res, 200, { type: 'server-response', rpcId: rpcIdOf(body) ?? 'invalid-request', result: rpcFailure('gateway/bad-request', 'invalid client-request message', { issues: parsed.issues }) })
+    return
+  }
+  // The standard schema result is untyped (`value: unknown`), so the wire shape
+  // has to be re-asserted against the local ClientRequest.
+  const message = parsed.value as ClientRequest
+  if (message.method !== endpoint) {
+    sendJson(res, 200, { type: 'server-response', rpcId: message.rpcId, result: rpcFailure('gateway/bad-request', `method ${JSON.stringify(message.method)} does not match endpoint ${JSON.stringify(endpoint)}`, { issues: [] }) })
+    return
+  }
+  try {
+    const result = await makeRpcHandler(store)(endpoint, message.payload)
+    sendJson(res, 200, { type: 'server-response', rpcId: message.rpcId, result })
+  } catch (error) {
+    sendText(res, 500, `handler failure: ${String(error)}`)
+  }
 }

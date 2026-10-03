@@ -23,9 +23,9 @@ Shared infra: a single plumbing core in `tests-helpers/e2e/dsh.ts` (`launchDsh` 
 
 Lanes:
 
-- **vitest e2e lane** — `tests/e2e/server/*.test.ts`, no browser: drives the live instance over its HTTP API via the vitest wrapper (`tests-helpers/e2e/dsh-fixture.ts`). Provider API keys are inherited from the caller. The boot smoke suite (`tests/e2e/server/boot.test.ts`) runs the version matrix via `describe.each(E2E_DSH_VERSIONS)` — `0.1.1-rc.2` and `0.1.2-rc.1`.
+- **vitest e2e lane** — `tests/e2e/server/*.test.ts`, no browser: drives the live instance over its HTTP API via the vitest wrapper (`tests-helpers/e2e/dsh-fixture.ts`). Provider API keys are inherited from the caller. The boot smoke suite (`tests/e2e/server/boot.test.ts`) runs the version matrix via `describe.each(E2E_DSH_VERSIONS)` — `0.2.0-rc.2`.
 - **playwright acceptance lane** — `tests/e2e/acceptance.spec.ts` + `playwright.config.ts` (model-settings today), real chromium: the instance is keyless by design (provider API keys are stripped), and browsers come from the shared `~/.cache/ms-playwright` cache — never run `playwright install`.
-- **manual CLI** — `scripts/e2e-live.ts`, a thin wrapper over the core: flags `--package <name>` (required — a dir under `packages/`), `--port <n>` (default 3081), `--keep` (preserve the temp root for debugging; `E2E_KEEP=1` does the same for the playwright lane), `--version <v>` (default `0.1.1-rc.2`; `--version 0.1.2-rc.1` prints a real session cookie instead of `none`). SIGINT/SIGTERM stop the instance and remove the temp root unless `--keep`.
+- **manual CLI** — `scripts/e2e-live.ts`, a thin wrapper over the core: flags `--package <name>` (required — a dir under `packages/`), `--port <n>` (default 3081), `--keep` (preserve the temp root for debugging; `E2E_KEEP=1` does the same for the playwright lane), `--version <v>` (default `0.2.0-rc.2`). SIGINT/SIGTERM stop the instance and remove the temp root unless `--keep`.
 
 Run from the package dir:
 
@@ -34,11 +34,11 @@ pnpm test:e2e     # vitest e2e lane; model-settings then runs the playwright lan
 pnpm e2e:live     # manual throwaway instance: node ../../scripts/e2e-live.ts --package <name>
 ```
 
-The dsh binary is resolved identically in every lane: env `E2E_DSH_BIN` (must exist — the run hard-fails with `E2E_DSH_BIN does not exist: …` otherwise, no PATH fallback) → `ensureDshVersion(version)`, which auto-provisions the selected version on first launch: a throwaway pnpm project under `.tmp/dsh-versions/<version>` (~20–60 s; `CI=1`, `pnpm_config_store_dir=<repo>/.cache/pnpm/v11`, ~180 s timeout, serialized on a per-version lock); subsequent launches are instant. Those throwaway projects are exempt from the frozen-lockfile rule — the repo itself still installs frozen. dsh 0.1.1-rc.2 prints a tokenless ready URL (`session cookie: none`); dsh ≥ 0.1.2 prints a `?token=…` ready URL which the lanes exchange for a session cookie that suffices for in-session requests.
+The dsh binary is resolved identically in every lane: env `E2E_DSH_BIN` (must exist — the run hard-fails with `E2E_DSH_BIN does not exist: …` otherwise, no PATH fallback) → `ensureDshVersion(version)`, which auto-provisions the selected version on first launch: a throwaway pnpm project under `.tmp/dsh-versions/<version>` (~20–60 s; `CI=1`, `pnpm_config_store_dir=<repo>/.cache/pnpm/v11`, ~180 s timeout, serialized on a per-version lock); subsequent launches are instant. Those throwaway projects are exempt from the frozen-lockfile rule — the repo itself still installs frozen. dsh 0.2.0-rc.2 prints a `?token=…` ready URL which the lanes exchange for a session cookie that suffices for in-session requests.
 
 Playwright artifacts land under `.tmp/playwright/<package>`, caches under `.cache/`.
 
-Known issue: on dsh 0.1.2-rc.1, in-session `POST /model-settings/*` returns 405 (host plugin apply-ordering — tracked in dumbspec task `fix_0.1.2-rc1`); it also 401s cookie-less plain-URL navigation. The boot smoke suites cover the full matrix; the model-settings RPC suite and the playwright acceptance lane are pinned to `0.1.1-rc.2` until the fix lands. 0.1.1-rc.2 is the validated e2e baseline.
+Known issue: on dsh 0.2.0-rc.2 the host RPC channel is broken host-side (the `rpc-host` effect registers in a context without `webServer`), so model-settings mounts its own `/model-settings` prefix route on the host `webServer` (nested inject); the host bug remains in dsh (upstream ask). 0.2.0-rc.2 is the validated e2e baseline.
 
 ## Working style
 
