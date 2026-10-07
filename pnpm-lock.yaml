@@ -8,6 +8,40 @@ importers:
 
   .: {}
 
+  packages/dsh-global-queue:
+    dependencies:
+      '@deepseek-ai/dsh-home-paths':
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
+      '@deepseek-ai/schemastery':
+        specifier: ^3.18.1
+        version: 3.18.4
+      '@playwright/test':
+        specifier: ^1.62.1
+        version: 1.62.1
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.1
+      lightningcss:
+        specifier: ^1.32.0
+        version: 1.33.0
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      tsdown:
+        specifier: ^0.22.2
+        version: 0.22.14(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(yaml@2.9.1))
+
   packages/dsh-model-settings:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1108,7 +1142,7 @@ snapshots:
 
   '@deepseek-ai/cordis@4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7))':
     dependencies:
-      '@deepseek-ai/cosmokit': 1.8.2
+      '@deepseek-ai/cosmokit': 1.8.5
       '@standard-schema/spec': 1.1.0
     optionalDependencies:
       '@deepseek-ai/cordis-plugin-include': 1.0.9(@deepseek-ai/cordis-plugin-loader@1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7))(@deepseek-ai/cordis@4.0.1)
@@ -1116,7 +1150,7 @@ snapshots:
 
   '@deepseek-ai/cordis@4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)':
     dependencies:
-      '@deepseek-ai/cosmokit': 1.8.2
+      '@deepseek-ai/cosmokit': 1.8.5
       '@standard-schema/spec': 1.1.0
     optionalDependencies:
       '@deepseek-ai/cordis-plugin-include': 1.0.9(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.1)
@@ -1188,7 +1222,7 @@ snapshots:
 
   '@deepseek-ai/dsh-home-paths@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)':
     dependencies:
-      '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7))
+      '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
 
   '@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)':
     dependencies:

@@ -1,0 +1,6 @@
+# The global-queue bundle patch: mounts the plugin row into any profile that
+# installs this package. The host half registers a global queue for dsh
+# work items on the host seam.
+- insert:
+    - id: global-queue
+      name: '@apkawa/dsh-global-queue'

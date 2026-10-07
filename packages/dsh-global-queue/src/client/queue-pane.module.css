@@ -1,0 +1,261 @@
+/* The "Show queue" tab body, in the settings-panel design language: a
+   bounded, scrollable list of hairline-separated rows (14/22 title, 12/18
+   caption), an auto-growing multi-line edit field with a ghost sm action row,
+   the ghost sm icon edit/remove buttons, and the link-toned open-session
+   link. The
+   sidebar tab body fills its height
+   (ui-sidebar-right `.tabBody`), so the list takes the remaining space and
+   scrolls within it, its scrollbar themed at the l2 elevation. Every color
+   resolves through a `--dsw-alias-*` token, so light and dark themes both
+   hold without own branches. */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The empty state: plain text in the tertiary tone. */
+.empty {
+  margin: 0;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The bounded list: the pane's remaining height, scrolling when it overflows. */
+.list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  /* The scrollbar elevation belongs with the surface (ui-theme scrollbar.css). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The ⋮⋮ drag handle: the only draggable part of the row. */
+.drag {
+  flex: none;
+  cursor: grab;
+  user-select: none;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* One item: hairline separator below, a hover tone on the row. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* In-flight drag state: the carried row's origin dims. */
+.dragging {
+  opacity: 0.4;
+}
+
+/* The receiving slot «frees»: a dashed l3 outline over cleared content —
+   layout and height are preserved, so the list does not jump. */
+.dropTarget {
+  outline: 2px dashed var(--dsw-alias-border-l3);
+  outline-offset: -2px;
+}
+
+.dropTarget > * {
+  opacity: 0;
+}
+
+/* The text cell: the row's flexible cell. A zero flex basis (not auto) is
+   load-bearing: with `white-space: nowrap` the text's min-content width is
+   the whole unbroken line, so an auto basis would give this cell a huge
+   min-content contribution and force the wrapping row to break the text onto
+   its own line — a zero basis lets the cell shrink first instead, so the meta
+   items stay on the first line at any width. */
+.textWrap {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The item text: the row title, and the double-click target for inline edit;
+   long text (including multi-line text — `nowrap` collapses its newlines)
+   truncates with an ellipsis. */
+.text {
+  display: block;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The status label, in the state token family of its meaning. */
+.status {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.statusQueued {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.statusRunning {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.statusDone {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.statusInterrupted {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* The edit field's wrapper: full row width, the textarea over its action row. */
+.editWrap {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The inline edit field: an auto-growing multi-line textarea (32px floor,
+   200px cap, no manual resize), the token hairline border. */
+.edit {
+  box-sizing: border-box;
+  min-height: 32px;
+  max-height: 200px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  overflow-y: auto;
+  resize: none;
+}
+
+/* The edit action row: right-aligned, 8px gap. */
+.editActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* The Cancel/Save actions: ghost sm capsules (h28, 14px corners, no fill,
+   hover tone); Save carries the l3 outline to stand out slightly. */
+.cancel,
+.save {
+  box-sizing: border-box;
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.cancel:hover,
+.save:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.save {
+  border-color: var(--dsw-alias-border-l3);
+}
+
+/* The Edit and Remove icon buttons: ghost sm (h28, 14px corners, no fill,
+   hover tone) centered on a 16px icon that rides the label ink (currentColor). */
+.editButton,
+.remove {
+  box-sizing: border-box;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.editButton:hover,
+.remove:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The compact stats line: a 12/18 caption in the tertiary tone. */
+.stats {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The open-session link: the workspace's display name with the folder glyph,
+   in the caption tone (12/18 tertiary) — the underline appears on hover only. */
+.open {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.open:hover {
+  text-decoration: underline;
+}
+
+/* No session attached yet: the name shows, the link doesn't act — dimmed,
+   no pointer, no hover underline. */
+.openDisabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.openDisabled:hover {
+  text-decoration: none;
+}
+
+.edit:focus-visible,
+.editButton:focus-visible,
+.cancel:focus-visible,
+.save:focus-visible,
+.remove:focus-visible,
+.open:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}

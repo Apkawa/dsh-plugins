@@ -7,3 +7,4 @@ examples/tmp/
 .npm-cache
 .cache
 .tmp
+.playwright-cli/

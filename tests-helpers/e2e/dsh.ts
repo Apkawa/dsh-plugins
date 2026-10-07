@@ -138,13 +138,16 @@ function ensureBuilt(packageDir: string, env: NodeJS.ProcessEnv): void {
   if (stillMissing.length > 0) throw new Error(`built artifacts still missing after "pnpm build": ${stillMissing.join(', ')}`)
 }
 
-// lib/index.js is always required; lib/client.js additionally when the package's
-// exports map has a ./client key (same rule as the shared launcher).
+// lib/index.js is always required; the ./client export's target additionally when
+// the package's exports map has a ./client key (same rule as the shared launcher).
 function requiredArtifacts(packageDir: string): string[] {
   const packageJson = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as { exports?: Record<string, unknown> }
   const artifacts = ['lib/index.js']
-  const exportsMap = packageJson.exports
-  if (exportsMap !== null && typeof exportsMap === 'object' && Object.prototype.hasOwnProperty.call(exportsMap, './client')) artifacts.push('lib/client.js')
+  const clientExport = packageJson.exports?.['./client']
+  if (clientExport === undefined) return artifacts
+  const clientPath = typeof clientExport === 'string' ? clientExport : (clientExport as { default?: unknown }).default
+  if (typeof clientPath !== 'string') return artifacts
+  artifacts.push(clientPath.replace(/^\.\//, ''))
   return artifacts
 }
 

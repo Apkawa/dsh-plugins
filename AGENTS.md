@@ -17,6 +17,7 @@ Each plugin is a package under `packages/<name>/` and owns its `AGENTS.md` for
 project structure, build, and test details — the root file keeps only what
 applies to the whole repo.
 
+* [`packages/dsh-global-queue`](./packages/dsh-global-queue/AGENTS.md) — global queue of prompts: the next queued prompt runs as soon as the model is free (Cordis plugin, host + client halves).
 * [`packages/dsh-model-settings`](./packages/dsh-model-settings/AGENTS.md) — per-model reasoning effort, context window, and vision input management for llama.cpp models (Cordis plugin, host + client halves).
 * [`packages/dsh-web-search-ddgs`](./packages/dsh-web-search-ddgs/AGENTS.md) — keyless web-search provider for the `web_search` tool on ddgs (host-only Cordis plugin).
 
