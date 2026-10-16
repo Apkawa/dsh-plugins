@@ -4,6 +4,51 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@deepseek-ai/cordis':
+      specifier: ^4.0.1
+      version: 4.0.1
+    '@deepseek-ai/dsh-client-connection':
+      specifier: ^0.2.0-rc.2
+      version: 0.2.0-rc.2
+    '@deepseek-ai/dsh-client-modules':
+      specifier: ^0.2.0-rc.2
+      version: 0.2.0-rc.2
+    '@deepseek-ai/dsh-client-ui-slots':
+      specifier: ^0.2.0-rc.2
+      version: 0.2.0-rc.2
+    '@deepseek-ai/dsh-settings':
+      specifier: ^0.2.0-rc.2
+      version: 0.2.0-rc.2
+    '@deepseek-ai/schemastery':
+      specifier: ^3.18.1
+      version: 3.18.4
+    '@playwright/test':
+      specifier: ^1.62.1
+      version: 1.62.1
+    '@types/node':
+      specifier: ^22.20.0
+      version: 22.20.1
+    '@types/react':
+      specifier: ~18.3.1
+      version: 18.3.31
+    lightningcss:
+      specifier: ^1.32.0
+      version: 1.33.0
+    react:
+      specifier: ^18.2.0
+      version: 18.3.1
+    tsdown:
+      specifier: ^0.22.2
+      version: 0.22.14
+    typescript:
+      specifier: ^6.0.3
+      version: 6.0.3
+    vitest:
+      specifier: ^4.1.8
+      version: 4.1.11
+
 importers:
 
   .: {}
@@ -15,46 +60,46 @@ importers:
         version: link:../utils
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: ^4.0.1
+        specifier: 'catalog:'
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7))
       '@deepseek-ai/dsh-client-connection':
-        specifier: ^0.2.0-rc.2
+        specifier: 'catalog:'
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)))
       '@deepseek-ai/dsh-client-modules':
-        specifier: ^0.2.0-rc.2
+        specifier: 'catalog:'
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-client-ui-slots':
-        specifier: ^0.2.0-rc.2
+        specifier: 'catalog:'
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-settings':
-        specifier: ^0.2.0-rc.2
+        specifier: 'catalog:'
         version: 0.2.0-rc.2(23f589e4e9a04e65ba0cb7e3333194f4)
       '@deepseek-ai/schemastery':
-        specifier: ^3.18.1
+        specifier: 'catalog:'
         version: 3.18.4
       '@playwright/test':
-        specifier: ^1.62.1
+        specifier: 'catalog:'
         version: 1.62.1
       '@types/node':
-        specifier: ^22.20.0
+        specifier: 'catalog:'
         version: 22.20.1
       '@types/react':
-        specifier: ~18.3.1
+        specifier: 'catalog:'
         version: 18.3.31
       lightningcss:
-        specifier: ^1.32.0
+        specifier: 'catalog:'
         version: 1.33.0
       react:
-        specifier: ^18.2.0
+        specifier: 'catalog:'
         version: 18.3.1
       tsdown:
-        specifier: ^0.22.2
+        specifier: 'catalog:'
         version: 0.22.14(typescript@6.0.3)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(yaml@2.9.1))
 
   packages/dsh-global-queue:
@@ -64,31 +109,31 @@ importers:
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: ^4.0.1
+        specifier: 'catalog:'
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
       '@deepseek-ai/schemastery':
-        specifier: ^3.18.1
+        specifier: 'catalog:'
         version: 3.18.4
       '@playwright/test':
-        specifier: ^1.62.1
+        specifier: 'catalog:'
         version: 1.62.1
       '@types/node':
-        specifier: ^22.20.0
+        specifier: 'catalog:'
         version: 22.20.1
       lightningcss:
-        specifier: ^1.32.0
+        specifier: 'catalog:'
         version: 1.33.0
       react:
-        specifier: ^18.2.0
+        specifier: 'catalog:'
         version: 18.3.1
       tsdown:
-        specifier: ^0.22.2
+        specifier: 'catalog:'
         version: 0.22.14(typescript@6.0.3)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(yaml@2.9.1))
 
   packages/dsh-model-settings:
@@ -98,46 +143,46 @@ importers:
         version: link:../utils
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: ^4.0.1
+        specifier: 'catalog:'
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
       '@deepseek-ai/dsh-client-connection':
-        specifier: ^0.2.0-rc.2
+        specifier: 'catalog:'
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)))
       '@deepseek-ai/dsh-client-modules':
-        specifier: ^0.2.0-rc.2
+        specifier: 'catalog:'
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-client-ui-slots':
-        specifier: ^0.2.0-rc.2
+        specifier: 'catalog:'
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-settings':
-        specifier: ^0.2.0-rc.2
-        version: 0.2.0-rc.2(ad6b7b62c7a67c923cf577e3126646a5)
+        specifier: 'catalog:'
+        version: 0.2.0-rc.2(5af1ab5e16bb357b689a963d6a8a204d)
       '@deepseek-ai/schemastery':
-        specifier: ^3.18.1
-        version: 3.18.1
+        specifier: 'catalog:'
+        version: 3.18.4
       '@playwright/test':
-        specifier: ^1.62.1
+        specifier: 'catalog:'
         version: 1.62.1
       '@types/node':
-        specifier: ^22.20.0
+        specifier: 'catalog:'
         version: 22.20.1
       '@types/react':
-        specifier: ~18.3.1
+        specifier: 'catalog:'
         version: 18.3.31
       lightningcss:
-        specifier: ^1.32.0
+        specifier: 'catalog:'
         version: 1.33.0
       react:
-        specifier: ^18.2.0
+        specifier: 'catalog:'
         version: 18.3.1
       tsdown:
-        specifier: ^0.22.2
+        specifier: 'catalog:'
         version: 0.22.14(typescript@6.0.3)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(yaml@2.9.1))
 
   packages/dsh-web-search-ddgs:
@@ -147,34 +192,34 @@ importers:
         version: link:../utils
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: ^4.0.1
+        specifier: 'catalog:'
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
       '@deepseek-ai/dsh-web':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-llm@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))
       '@deepseek-ai/schemastery':
-        specifier: ^3.18.1
-        version: 3.18.1
+        specifier: 'catalog:'
+        version: 3.18.4
       '@types/node':
-        specifier: ^22.20.0
+        specifier: 'catalog:'
         version: 22.20.1
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(yaml@2.9.1))
 
   packages/utils:
     devDependencies:
       '@types/node':
-        specifier: ^22.20.0
+        specifier: 'catalog:'
         version: 22.20.1
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(yaml@2.9.1))
 
 packages:
@@ -211,9 +256,6 @@ packages:
         optional: true
       '@deepseek-ai/cordis-plugin-loader':
         optional: true
-
-  '@deepseek-ai/cosmokit@1.8.2':
-    resolution: {integrity: sha512-muBOKtSrUKU5m/xpq8ZXWL6hQ/jgd4PhU2PqH97bcxIiLEJfNwZOGQEx4t/aS/GgxRAR+ra9pMHPMtTHU4sqqA==}
 
   '@deepseek-ai/cosmokit@1.8.5':
     resolution: {integrity: sha512-LXsrlem9z8dq4sLflj2yuCuYX7KqhdzF5hZly3eZyuTo8d6oDSOXuEgC5DbQWKW+lksm6zmOutQLsP/ma6wR6A==}
@@ -352,9 +394,6 @@ packages:
     peerDependencies:
       '@deepseek-ai/cordis': ~4.0.4
       '@deepseek-ai/dsh-llm': 0.2.0-rc.2
-
-  '@deepseek-ai/schemastery@3.18.1':
-    resolution: {integrity: sha512-Qn0FCSwCQnpnj6SB31I6i2sIKgKWnkbJM8O0EU91Gv2UsYVvtZTl6IA0sCwk2e2MZf5S8w5hpq9QkeVvK9qwxg==}
 
   '@deepseek-ai/schemastery@3.18.4':
     resolution: {integrity: sha512-SSXO6tYuyrIqKVbmOnIq0s+riUywYzouFMcnBluHF9n4KMo2G8HvEzhCYj6pj2617/glOjbJuVInJ9hfONsjkg==}
@@ -1229,8 +1268,6 @@ snapshots:
       '@deepseek-ai/cordis-plugin-include': 1.0.9(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/cordis-plugin-loader': 1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7)
 
-  '@deepseek-ai/cosmokit@1.8.2': {}
-
   '@deepseek-ai/cosmokit@1.8.5': {}
 
   '@deepseek-ai/dsh-app-boot@0.2.0-rc.2(@deepseek-ai/cordis-plugin-group@1.0.4(@deepseek-ai/cordis-plugin-loader@1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7))(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7))(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-home-paths@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-launch-environment@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-system-prompt@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-llm@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1))))':
@@ -1380,7 +1417,7 @@ snapshots:
       - '@deepseek-ai/dsh-hmr'
       - node-addon-require-builtin
 
-  '@deepseek-ai/dsh-settings@0.2.0-rc.2(ad6b7b62c7a67c923cf577e3126646a5)':
+  '@deepseek-ai/dsh-settings@0.2.0-rc.2(5af1ab5e16bb357b689a963d6a8a204d)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
       '@deepseek-ai/cordis-plugin-loader': 1.0.5(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.7)
@@ -1390,7 +1427,7 @@ snapshots:
       '@deepseek-ai/dsh-invariants': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-session': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)))
       '@deepseek-ai/dsh-util-values': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
-      '@deepseek-ai/schemastery': 3.18.1
+      '@deepseek-ai/schemastery': 3.18.4
       yaml: 2.9.1
     transitivePeerDependencies:
       - '@deepseek-ai/cordis-plugin-include'
@@ -1428,11 +1465,6 @@ snapshots:
       '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
       '@deepseek-ai/dsh-llm': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/schemastery': 3.18.4
-
-  '@deepseek-ai/schemastery@3.18.1':
-    dependencies:
-      '@deepseek-ai/cosmokit': 1.8.2
-      '@standard-schema/spec': 1.1.0
 
   '@deepseek-ai/schemastery@3.18.4':
     dependencies:

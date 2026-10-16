@@ -29,16 +29,16 @@
     "node": ">=24.0.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/cordis": "catalog:",
+    "@deepseek-ai/schemastery": "catalog:"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/cordis": "catalog:",
     "@deepseek-ai/dsh-web": "0.2.0-rc.2",
-    "@deepseek-ai/schemastery": "^3.18.1",
-    "@types/node": "^22.20.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.8"
+    "@deepseek-ai/schemastery": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
