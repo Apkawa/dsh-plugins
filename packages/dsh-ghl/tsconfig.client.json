@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "paths": {
+      "@root/tests-helpers/*": ["../../tests-helpers/*"],
+      // Type-check only: the primitives package is a dsh platform seed at
+      // runtime (resolved by the shell's module table), not an npm
+      // devDependency; the pinned 0.2.0-rc.2 tree carries the matching built
+      // types (the dsh checkout's lib/ predates the icon rename, and the
+      // tree's top-level node_modules holds only the direct dsh dependency).
+      "@deepseek-ai/dsh-client-ui-primitives": ["../../.tmp/dsh-versions/0.2.0-rc.2/node_modules/.pnpm/@deepseek-ai+dsh-client-ui-primitives@0.2.0-rc.2_@deepseek-ai+cordis@4.0.4/node_modules/@deepseek-ai/dsh-client-ui-primitives"]
+    }
+  },
+  "include": ["src/client"],
+  "exclude": ["tests"]
+}

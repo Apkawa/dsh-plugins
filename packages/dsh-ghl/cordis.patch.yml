@@ -1,0 +1,6 @@
+# The ghl bundle patch: mounts the plugin row into any profile that
+# installs this package. The host half reads GitHub issues; the client
+# half renders them (read-only integration).
+- insert:
+    - id: ghl
+      name: '@apkawa/dsh-ghl'
