@@ -1,5 +1,7 @@
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
 import type { ModelEntry } from './props.ts'
+
+const logger = new Log('model-settings')
 
 /** A minimal fetch seam so the listing fetch is testable without touching the network. */
 export interface Fetcher {
@@ -86,7 +88,7 @@ export async function fetchModels(
   options?: FetchModelsOptions,
 ): Promise<ModelEntry[]> {
   const url = modelsUrl(baseURL)
-  dbg.debug(`fetchModels GET ${url} auth=${options?.apiKey !== undefined}`)
+  logger.debug(`fetchModels GET ${url} auth=${options?.apiKey !== undefined}`)
   const controller = new AbortController()
   const timeoutMs = options?.timeoutMs ?? FETCH_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -94,10 +96,10 @@ export async function fetchModels(
     const headers: Record<string, string> = { accept: 'application/json' }
     if (options?.apiKey !== undefined) headers.authorization = `Bearer ${options.apiKey}`
     const response = await fetcher.fetch(url, { method: 'GET', headers, signal: controller.signal })
-    dbg.debug(`fetchModels HTTP ${response.status}`)
+    logger.debug(`fetchModels HTTP ${response.status}`)
     if (!response.ok) throw new Error(`fetchModels: HTTP ${response.status} from ${url}`)
     const body = await readBounded(response)
-    dbg.debug(`fetchModels body=${body.length} bytes`)
+    logger.debug(`fetchModels body=${body.length} bytes`)
     let json: unknown
     try {
       json = JSON.parse(body)
@@ -106,7 +108,7 @@ export async function fetchModels(
     }
     const root = typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : null
     if (root === null || !Array.isArray(root.data)) throw new Error(`fetchModels: no data[] in reply from ${url}`)
-    dbg.debug(`fetchModels parsed ${root.data.length} models`)
+    logger.debug(`fetchModels parsed ${root.data.length} models`)
     return root.data as ModelEntry[]
   } catch (err) {
     // Propagate with context; the caller (autofill → watcher) logs it.

@@ -3,9 +3,11 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-web'
 import z from '@deepseek-ai/schemastery'
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
 import { DdgsSearchProvider, DEFAULT_BACKEND, DEFAULT_MAX_RESULTS, DEFAULT_TIMEOUT_MS, PROVIDER_ID } from './provider.ts'
 import { createRunner, DEFAULT_SCRIPT_PATH } from './runner.ts'
+
+const logger = new Log('web-search-ddgs')
 
 export const name = 'web-search-ddgs'
 
@@ -38,7 +40,7 @@ export const DEFAULT_VENV_DIR = join(homedir(), '.cache', 'dsh-web-search-ddgs',
 
 export function apply(ctx: Context, config: Config): void {
   const venvDir = config.venvDir ?? DEFAULT_VENV_DIR
-  dbg.log('apply: backend:', config.backend ?? DEFAULT_BACKEND,
+  logger.log('apply: backend:', config.backend ?? DEFAULT_BACKEND,
     'maxResults:', config.maxResults ?? DEFAULT_MAX_RESULTS,
     'timeoutMs:', config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     'venvDir:', venvDir, 'ddgsVersion:', config.ddgsVersion ?? 'ddgs')
@@ -54,5 +56,5 @@ export function apply(ctx: Context, config: Config): void {
     backend: config.backend ?? DEFAULT_BACKEND,
     maxResults: config.maxResults ?? DEFAULT_MAX_RESULTS,
   }))
-  dbg.log('registered search provider:', PROVIDER_ID)
+  logger.log('registered search provider:', PROVIDER_ID)
 }

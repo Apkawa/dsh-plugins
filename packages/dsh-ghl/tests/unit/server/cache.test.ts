@@ -235,8 +235,8 @@ describe('createIssueCache — debug log lines', () => {
     const cache = createIssueCache(provider, { now: clock().now })
     await cache.getIssue(REPO, 42)
     await cache.getIssue(REPO, 42)
-    expect(debug).toHaveBeenCalledWith('[ghl]', 'GET 200 https://api.github.com/repos/octo/ghl/issues/42 [cache-miss]')
-    expect(debug).toHaveBeenLastCalledWith('[ghl]', 'GET 200 https://api.github.com/repos/octo/ghl/issues/42 [cached]')
+    expect(debug).toHaveBeenCalledWith('DEBUG [ghl] GET 200 https://api.github.com/repos/octo/ghl/issues/42 [cache-miss]')
+    expect(debug).toHaveBeenLastCalledWith('DEBUG [ghl] GET 200 https://api.github.com/repos/octo/ghl/issues/42 [cached]')
     debug.mockRestore()
   })
 
@@ -245,7 +245,7 @@ describe('createIssueCache — debug log lines', () => {
     const { provider } = fakeProvider()
     const cache = createIssueCache(provider, { now: clock().now })
     await cache.listIssues(REPO, { state: 'open', perPage: 30 })
-    expect(debug).toHaveBeenLastCalledWith('[ghl]', 'GET 200 https://api.github.com/repos/octo/ghl/issues?state=open&per_page=30 [cache-miss]')
+    expect(debug).toHaveBeenLastCalledWith('DEBUG [ghl] GET 200 https://api.github.com/repos/octo/ghl/issues?state=open&per_page=30 [cache-miss]')
     debug.mockRestore()
   })
 
@@ -257,7 +257,7 @@ describe('createIssueCache — debug log lines', () => {
     await cache.getIssue(REPO, 42)
     time.advance(60_001)
     await cache.getIssue(REPO, 42)
-    expect(debug).toHaveBeenLastCalledWith('[ghl]', 'GET 304 https://api.github.com/repos/octo/ghl/issues/42 [cache-miss]')
+    expect(debug).toHaveBeenLastCalledWith('DEBUG [ghl] GET 304 https://api.github.com/repos/octo/ghl/issues/42 [cache-miss]')
     debug.mockRestore()
   })
 
@@ -267,7 +267,7 @@ describe('createIssueCache — debug log lines', () => {
     const cache = createIssueCache(provider, { now: clock().now })
     await expect(cache.getIssue(REPO, 999)).rejects.toBeInstanceOf(IssueNotFoundError)
     await expect(cache.getIssue(REPO, 999)).rejects.toBeInstanceOf(IssueNotFoundError)
-    expect(debug).toHaveBeenLastCalledWith('[ghl]', 'GET 404 https://api.github.com/repos/octo/ghl/issues/999 [cached]')
+    expect(debug).toHaveBeenLastCalledWith('DEBUG [ghl] GET 404 https://api.github.com/repos/octo/ghl/issues/999 [cached]')
     debug.mockRestore()
   })
 })

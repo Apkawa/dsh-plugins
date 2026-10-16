@@ -21,7 +21,7 @@ Host half only (`src/*.ts`; pure logic + composition root, unit-tested):
 * `provider.ts` — `DdgsSearchProvider` (`PROVIDER_ID = 'ddgs'`): implements `WebSearchProvider`; serializes searches through an internal queue (the tool fires up to 4 queries concurrently and bursts trip backend rate limits); cheap local `available()` (venv exists or `uv` is on PATH — no network).
 * `runner.ts` — spawns `ddgs-search.py` under the managed uv venv with per-search timeout + abort signal; the venv is provisioned lazily on first search (`uv venv` + `uv pip install ddgs`) and self-healed if the install goes missing.
 * `ddgs-search.py` — one-shot ddgs text search: JSON array on stdout (exit 0) or a one-line error (exit 1); re-registers the upstream-disabled yandex engine only for `backend=yandex`.
-* `log.ts` — `dbg` wrapper, gated on `DEBUG=1`, errors always loud.
+* Logging: shared `@apkawa/utils` `Log` (gated on `DEBUG=1`, errors always loud).
 
 **Tests**: `tests/unit/server/<module>.test.ts` — vitest node env, in-process spawner/seam doubles, no network.
 

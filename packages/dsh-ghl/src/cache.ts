@@ -8,7 +8,9 @@
 
 import type { BaseIssue, Issue, IssueListResult, IssueResult, ListIssuesParams, RepoRef } from './issues.ts'
 import { IssueNotFoundError, RateLimitError, issueUrl, issuesUrl } from './issues.ts'
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
+
+const logger = new Log('ghl')
 
 interface CacheOptions {
   now?: () => number
@@ -42,14 +44,14 @@ export function createIssueCache(provider: BaseIssue, options: CacheOptions = {}
       const url = issuesUrl(repo, params)
       const key = listKey(repo, params)
       const state = lookup(key)
-      if (state.entry !== null) { dbg.debug(`GET ${state.entry.status} ${url} [cached]`); return settle(state.entry) as Promise<IssueResult<IssueListResult>> }
+      if (state.entry !== null) { logger.debug(`GET ${state.entry.status} ${url} [cached]`); return settle(state.entry) as Promise<IssueResult<IssueListResult>> }
       return miss<IssueListResult>(key, url, state.stale, () => provider.listIssues(repo, params, etagOpts(state.stale)))
     },
     async getIssue(repo, number) {
       const url = issueUrl(repo, number)
       const key = getKey(repo, number)
       const state = lookup(key)
-      if (state.entry !== null) { dbg.debug(`GET ${state.entry.status} ${url} [cached]`); return settle(state.entry) as Promise<IssueResult<Issue>> }
+      if (state.entry !== null) { logger.debug(`GET ${state.entry.status} ${url} [cached]`); return settle(state.entry) as Promise<IssueResult<Issue>> }
       return miss<Issue>(key, url, state.stale, () => provider.getIssue(repo, number, etagOpts(state.stale)))
     },
     clear(repo) {
@@ -103,11 +105,11 @@ export function createIssueCache(provider: BaseIssue, options: CacheOptions = {}
           store(key, t + ttlMs, outcome.status, etag, null, value)
           const result: IssueResult<T> = { value, status: outcome.status }
           if (etag !== undefined) result.etag = etag
-          dbg.debug(`GET ${outcome.status} ${url} [cache-miss]`)
+          logger.debug(`GET ${outcome.status} ${url} [cache-miss]`)
           return result
         }
         store(key, t + ttlMs, outcome.status, outcome.etag, null, outcome.value)
-        dbg.debug(`GET ${outcome.status} ${url} [cache-miss]`)
+        logger.debug(`GET ${outcome.status} ${url} [cache-miss]`)
         return outcome
       },
       (error: unknown) => {
@@ -121,7 +123,7 @@ export function createIssueCache(provider: BaseIssue, options: CacheOptions = {}
   function guard(t: number) {
     const cutoff = t - WINDOW_MS
     while (calls.length > 0 && (calls[0] ?? Infinity) < cutoff) calls.shift()
-    if (calls.length >= budgetPerHour) { dbg.warn('rate budget exhausted', `${calls.length}/${budgetPerHour} calls in the sliding hour`); throw new RateLimitError(429) }
+    if (calls.length >= budgetPerHour) { logger.warn('rate budget exhausted', `${calls.length}/${budgetPerHour} calls in the sliding hour`); throw new RateLimitError(429) }
     calls.push(t)
   }
 

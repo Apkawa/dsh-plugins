@@ -21,6 +21,9 @@
     "cordis.patch.yml",
     "ddgs-search.py"
   ],
+  "dependencies": {
+    "@apkawa/utils": "workspace:*"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=24.0.0"

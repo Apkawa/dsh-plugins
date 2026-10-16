@@ -9,8 +9,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import z from '@deepseek-ai/schemastery'
 import { IssueNotFoundError, RateLimitError, type BaseIssue, type ListIssuesParams, type RepoRef } from './issues.ts'
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
 import type { DetectionResult } from './repo.ts'
+
+const logger = new Log('ghl')
 
 /** The logical RPC channel the client calls. */
 const CHANNEL = '/ghl'
@@ -20,7 +22,7 @@ export type RpcResult = { ok: true; value: unknown } | { ok: false; error: { cod
 
 /** Build an RPC error in the shape the dsh carrier validates. */
 function rpcFailure(code: string, message: string, details: Record<string, unknown>): RpcResult {
-  dbg.error(`rpc failure ${code}: ${message}`)
+  logger.error(`rpc failure ${code}: ${message}`)
   return { ok: false, error: { code, message, details } }
 }
 

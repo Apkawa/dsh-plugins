@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
+
+const logger = new Log('web-search-ddgs')
 
 /** ddgs result item as emitted by `ddgs-search.py`. */
 export interface DdgsItem {
@@ -58,21 +60,21 @@ export function createRunner(options: RunnerOptions, spawner: Spawner = runComma
 
   async function setupVenv(): Promise<void> {
     if (!existsSync(venvPython())) {
-      dbg.log('venv missing, provisioning:', options.venvDir)
+      logger.log('venv missing, provisioning:', options.venvDir)
       await uv('venv', [options.venvDir])
       await uv('pip', ['install', '-p', options.venvDir, options.ddgsVersion])
       return
     }
     if (!existsSync(join(options.venvDir, 'bin', 'ddgs'))) {
-      dbg.log('ddgs missing, installing:', options.ddgsVersion)
+      logger.log('ddgs missing, installing:', options.ddgsVersion)
       await uv('pip', ['install', '-p', options.venvDir, options.ddgsVersion])
       return
     }
-    dbg.log('venv ready:', options.venvDir)
+    logger.log('venv ready:', options.venvDir)
   }
 
   async function uv(args0: string, rest: string[]): Promise<void> {
-    dbg.log('uv:', [args0, ...rest].join(' '))
+    logger.log('uv:', [args0, ...rest].join(' '))
     const outcome = await spawner('uv', [args0, ...rest], {})
     if (outcome.code !== 0) throw new Error(`uv ${args0} failed: ${outcome.stderr.trim() || outcome.stdout.trim() || `exit ${outcome.code}`}`)
   }
@@ -88,7 +90,7 @@ export function createRunner(options: RunnerOptions, spawner: Spawner = runComma
       }, options.timeoutMs)
       const onCallerAbort = () => controller.abort()
       params.signal?.addEventListener('abort', onCallerAbort)
-      dbg.log('spawn:', venvPython(), options.scriptPath, 'timeout:', options.timeoutMs, 'ms')
+      logger.log('spawn:', venvPython(), options.scriptPath, 'timeout:', options.timeoutMs, 'ms')
       const outcome = await spawner(venvPython(), [
         options.scriptPath,
         '--query', params.query,

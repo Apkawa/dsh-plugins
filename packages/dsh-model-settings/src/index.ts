@@ -12,13 +12,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { autofill } from './autofill.ts'
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
 import { fetchModels, type Fetcher } from './probe.ts'
 import { contextWindowFromEntry } from './props.ts'
 import { isCandidateRoute, persistContextWindow, persistModels, type LlmModelEntry, type LlmRouteProfile, type LlmSection, type SettingsStore } from './settings-io.ts'
 import { validateEfforts, type ReasoningEfforts } from './efforts.ts'
 import { persistModelSave, type ModelSaveParts } from './model-save.ts'
 import { roundDown } from './round.ts'
+
+const logger = new Log('model-settings')
 
 export const name = 'model-settings'
 
@@ -285,7 +287,7 @@ export function apply(ctx: Context): void {
     // own top-level transaction, serialized behind the host's in-flight one.
     let running = false
     ctx.on('settings/document-updated', (ns, revision) => {
-      dbg.debug(`settings/document-updated fired: ns=${ns} revision=${revision} isLlmNs=${ns === LLM_NS} running=${running}`)
+      logger.debug(`settings/document-updated fired: ns=${ns} revision=${revision} isLlmNs=${ns === LLM_NS} running=${running}`)
       if (ns !== LLM_NS || running) return
       running = true
       void hmrExecuting(ctx)
@@ -294,7 +296,7 @@ export function apply(ctx: Context): void {
           return executing.exit(() => autofill({ store, fetcher: productionFetcher, apiKeyFor }))
         })
         .catch(error => {
-          dbg.error('autofill round FAILED:', error)
+          logger.error('autofill round FAILED:', error)
           ctx.logger.error('model-settings: autofill round failed')
           ctx.logger.error(error)
         })

@@ -1,9 +1,11 @@
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
 import { fetchModels, type Fetcher } from './probe.ts'
 import { contextWindowFromEntry, entrySupportsVision, type ModelEntry } from './props.ts'
 import { roundDown } from './round.ts'
 import { isCandidateRoute, type LlmModelEntry, type LlmRouteProfile, type SettingsStore } from './settings-io.ts'
 import { persistModelSave, type ModelSaveParts } from './model-save.ts'
+
+const logger = new Log('model-settings')
 
 /** Options for one autofill round. */
 export interface AutofillOptions {
@@ -62,11 +64,11 @@ function visionIdsFromListing(entries: ModelEntry[]): Set<string> {
  * the next round retries what was skipped.
  */
 export async function autofill(options: AutofillOptions): Promise<void> {
-  dbg.debug('autofill: round start')
+  logger.debug('autofill: round start')
   const section = options.store.read().value
   for (const [routeId, route] of Object.entries(section.providers ?? {})) {
     if (!isCandidateRoute(route)) {
-      dbg.debug(`autofill: route "${routeId}" not a candidate (api=${route.api} baseURL=${route.baseURL}), skip`)
+      logger.debug(`autofill: route "${routeId}" not a candidate (api=${route.api} baseURL=${route.baseURL}), skip`)
       continue
     }
     const baseURL = route.baseURL
@@ -74,19 +76,19 @@ export async function autofill(options: AutofillOptions): Promise<void> {
     const models = route.models ?? []
     // Self-cycle guard: a route whose models are all sized and modalized has nothing to fetch.
     if (models.every(m => hasNonzeroContextWindow(m) && hasExplicitInput(m))) {
-      dbg.debug(`autofill: route "${routeId}" all ${models.length} models already sized and modalized, skip`)
+      logger.debug(`autofill: route "${routeId}" all ${models.length} models already sized and modalized, skip`)
       continue
     }
 
-    dbg.debug(`autofill: route "${routeId}" baseURL=${baseURL} models=[${models.map(m => m.id).join(', ')}]`)
+    logger.debug(`autofill: route "${routeId}" baseURL=${baseURL} models=[${models.map(m => m.id).join(', ')}]`)
     const apiKey = options.apiKeyFor?.(route)
     const fetchOptions = apiKey === undefined ? undefined : { apiKey }
     // Throws on failure → propagates to the watcher's .catch (we log it there).
     const entries = await fetchModels(options.fetcher, baseURL, fetchOptions)
 
-    dbg.debug(`autofill: got ${entries.length} models from listing`)
+    logger.debug(`autofill: got ${entries.length} models from listing`)
     const sizes = contextSizesFromListing(entries)
-    dbg.debug('autofill: parsed sizes:', JSON.stringify(sizes))
+    logger.debug('autofill: parsed sizes:', JSON.stringify(sizes))
     const vision = visionIdsFromListing(entries)
     for (const model of models) {
       const parts: ModelSaveParts = {}
@@ -98,16 +100,16 @@ export async function autofill(options: AutofillOptions): Promise<void> {
       if (!hasExplicitInput(model) && vision.has(model.id)) parts.input = [...VISION_INPUT]
       const partNames = Object.keys(parts)
       if (partNames.length === 0) {
-        dbg.debug(`autofill: model "${model.id}" has nothing to fill, skip`)
+        logger.debug(`autofill: model "${model.id}" has nothing to fill, skip`)
         continue
       }
-      dbg.debug(`autofill: filling model "${model.id}" (${partNames.join(', ')})`)
+      logger.debug(`autofill: filling model "${model.id}" (${partNames.join(', ')})`)
       try {
         await persistModelSave(options.store, routeId, model.id, parts)
       } catch (err) {
-        dbg.error(`autofill: persist failed for "${model.id}":`, err)
+        logger.error(`autofill: persist failed for "${model.id}":`, err)
       }
     }
   }
-  dbg.debug('autofill: round end')
+  logger.debug('autofill: round end')
 }

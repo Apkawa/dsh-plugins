@@ -23,7 +23,7 @@ client-only changes need a page reload. `pnpm typecheck` runs both tsconfigs;
 * `autofill.ts` — batch autofill with self-cycle guard.
 * `efforts.ts` — `THINKING_LEVELS`, `validateEfforts`, `planReasoningWrite` (empty efforts = clear → writes dsh's canonical `false`).
 * `model-save.ts` — one Save commits efforts + ctx together (`contextWindow: null` drops the stored key).
-* `log.ts` — `dbg` wrapper.
+* Logging: shared `@apkawa/utils` `Log` (gated on `DEBUG=1`, `error` ungated).
 
 **Client half** (`src/client/*`; React, no jsdom — pure logic lives in `.ts` files that are unit-tested):
 

@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { WebSearchProvider, WebSearchRequest, WebSearchResult, WebSearchSource } from '@deepseek-ai/dsh-web'
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
 import type { DdgsItem, DdgsRunner, SearchParams } from './runner.ts'
+
+const logger = new Log('web-search-ddgs')
 
 export const PROVIDER_ID = 'ddgs'
 export const DEFAULT_BACKEND = 'duckduckgo'
@@ -31,7 +33,7 @@ export class DdgsSearchProvider implements WebSearchProvider {
   available(): boolean {
     const venvReady = existsSync(join(this.options.venvDir, 'bin', 'python'))
     const uvOnPath = !venvReady && onPath('uv')
-    dbg.log('available:', venvReady || uvOnPath, venvReady ? '(venv ready)' : uvOnPath ? '(uv on PATH)' : '(no venv, no uv)')
+    logger.log('available:', venvReady || uvOnPath, venvReady ? '(venv ready)' : uvOnPath ? '(uv on PATH)' : '(no venv, no uv)')
     return venvReady || uvOnPath
   }
 
@@ -42,12 +44,12 @@ export class DdgsSearchProvider implements WebSearchProvider {
       maxResults: request.maxResults ?? this.options.maxResults,
       signal,
     }
-    dbg.log('search:', params.query, 'backend:', params.backend, 'maxResults:', params.maxResults)
+    logger.log('search:', params.query, 'backend:', params.backend, 'maxResults:', params.maxResults)
     const task = this.queue.then(() => this.options.runner.search(params))
     this.queue = task.then(() => undefined, () => undefined)
     return task
       .then(result => {
-        dbg.log('search ok:', result.items.length, 'items')
+        logger.log('search ok:', result.items.length, 'items')
         return { sources: toSources(result.items), truncated: false }
       })
   }

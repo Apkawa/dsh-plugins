@@ -5,7 +5,9 @@
  * `Fetcher` boundary.
  */
 
-import { dbg } from './log.ts'
+import { Log } from '@apkawa/utils'
+
+const logger = new Log('ghl')
 
 /** A repository coordinate. */
 export interface RepoRef {
@@ -98,19 +100,19 @@ export class GitHubIssue implements BaseIssue {
    * 304 answer (no body) returns a null value with the etag sent.
    */
   private async request<T>(repo: RepoRef, url: string, number: number | undefined, opts: { etag?: string } | undefined, map: (raw: unknown) => T): Promise<IssueResult<T>> {
-    dbg.debug('request: GET', url)
+    logger.debug('request: GET', url)
     const etag = opts?.etag
     const init: RequestInit | undefined = etag === undefined ? undefined : { headers: { 'if-none-match': etag } }
     const response = await this.fetcher(url, init)
-    if (response.status === 403 || response.status === 429) { dbg.error('rate limit', `GET ${url} → HTTP ${response.status}`); throw new RateLimitError(response.status) }
-    if (response.status === 404) { dbg.error('not found', `GET ${url} → HTTP 404`); throw new IssueNotFoundError(repo, number) }
+    if (response.status === 403 || response.status === 429) { logger.error('rate limit', `GET ${url} → HTTP ${response.status}`); throw new RateLimitError(response.status) }
+    if (response.status === 404) { logger.error('not found', `GET ${url} → HTTP 404`); throw new IssueNotFoundError(repo, number) }
     if (response.status === 304) {
       // A 304 is not ok but is a success here: the body is never parsed.
       const notModified: IssueResult<T> = { value: null, status: 304 }
       if (etag !== undefined) notModified.etag = etag
       return notModified
     }
-    if (!response.ok) { dbg.error('GitHub API failure', `GET ${url} → HTTP ${response.status}`); throw new Error(`GitHub API HTTP ${response.status} for ${url}`) }
+    if (!response.ok) { logger.error('GitHub API failure', `GET ${url} → HTTP ${response.status}`); throw new Error(`GitHub API HTTP ${response.status} for ${url}`) }
     const fresh: IssueResult<T> = { value: map(await response.json()), status: response.status }
     const responseEtag = response.headers.get('etag')
     if (responseEtag !== null) fresh.etag = responseEtag
