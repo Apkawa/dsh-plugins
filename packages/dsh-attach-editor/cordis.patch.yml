@@ -1,0 +1,6 @@
+# The attach-editor bundle patch: mounts the plugin row into any profile that
+# installs this package. The host half activates the row; the browser half
+# registers the right-sidebar "Annotate image" tab.
+- insert:
+    - id: attach-editor
+      name: '@apkawa/dsh-attach-editor'

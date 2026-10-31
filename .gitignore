@@ -8,3 +8,5 @@ examples/tmp/
 .cache
 .tmp
 .playwright-cli/
+
+*.swp

@@ -202,3 +202,12 @@ Discovered by trial and error against dsh's runtime validation; read these first
 4. **Event names (host vs client)**: `settings/updated(ns, next, prev, source)` is the HOST-side event (fires after each commit when the resolved value changes; never for a deep-equal value). `settings/document-updated(ns, revision)` is the CLIENT-forwarded version (fires on raw user-section change). Verify against dsh's types: `packages/settings/settings/src/types.ts` in the dsh tree.
 
 5. **Make failures LOUD during development**: a quiet-skip design (`fetchModels` → `null` on any failure) hid the 404 for hours. During dev/debugging, throw + log so the error is immediately visible in the console. Restore quiet-skip (catch + skip) only once the happy path is confirmed working.
+
+## 12. dsh-attach-editor: the four seams that shaped the design
+
+Built in `.dumbspec/current/2026-10-29_dsh-attach-editor/`; four dsh facts decided the architecture:
+
+- **Slot shadowing by priority**: entries registered on the same cell coexist at distinct priorities and the **lowest live priority renders** (`dsh/packages/client/ui-slots/src/index.ts:1134-1140`, the Shadowing javadoc). Registering at the exact priority already taken by the occupant **throws**, so the plugin's attachment rail takes `conversation.input.attachments` at **priority −1** to shadow the shipped `ComposerAttachments`.
+- **Attachment replacement composition** (client-side only — attachments live in the browser until send): `createDrafts` → `addAttachments([draft.id])` → `removeAttachment(oldId)` → `releaseDraftAttachment(oldId)`, composed in `packages/dsh-attach-editor/src/client/conversationReplace.ts` against an injected `ConversationActions`. **Trade-off**: `addAttachments` appends, so the edited image lands at the END of `attachmentIds` — the facade has no public in-place swap.
+- **Phase guard returns false, does not throw**: `input.addAttachments(ids)` returns `false` while phase is `submitting`/`adjudicating` (`dsh/packages/client/ui-conversation/src/client/input/facade.ts:220-221`). Check `phase(sessionId)` **before** `createDrafts` so a locked composer never leaves an orphan draft.
+- **Registry seam replaces cross-plugin imports**: the plugin cannot import another plugin's internals (`ConversationController.draftAttachments` is unreadable), so the rail remembers image blobs in a plugin-local registry (`src/client/attachmentRegistry.ts`) and the pane looks them up by `attachmentId` — nothing crosses the plugin boundary.

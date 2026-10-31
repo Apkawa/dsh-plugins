@@ -38,6 +38,8 @@ export interface DshHandle {
   cookie: string | null
   child: ChildProcess
   version: string | null
+  /** Everything the child has written to stdout+stderr so far (activation diagnostics ride here). */
+  readOutput: () => string
 }
 
 /**
@@ -55,11 +57,12 @@ export async function launchDsh(opts: { packageName: string; port?: number; keyl
   const env = childEnv(root, opts.keyless === true)
   ensureBuilt(packageDir, env)
   addPlugin(bin, root, env, packageDir)
-  const home = await bootWeb(bin, root, env, opts.port ?? 0)
+  const output = { text: '' }
+  const home = await bootWeb(bin, root, env, opts.port ?? 0, output)
   const cookie = home.url.includes('token=') ? await exchangeSession(home.url) : null
   const url = (home.url.split('?')[0] ?? home.url).replace('://0.0.0.0', '://127.0.0.1')
   const port = Number(new URL(home.url).port)
-  return { url, port, root, package: opts.packageName, bin, cookie, child: home.child, version }
+  return { url, port, root, package: opts.packageName, bin, cookie, child: home.child, version, readOutput: () => output.text }
 }
 
 /** SIGTERM the child and await its exit code; remove the temp root unless `E2E_KEEP=1`. */
@@ -158,13 +161,13 @@ function addPlugin(bin: string, root: string, env: NodeJS.ProcessEnv, packageDir
   if (result.status !== 0) throw new Error(`"dsh plugin --profile web add" exited with code ${result.status}\n${result.stdout.toString()}\n${result.stderr.toString()}`)
 }
 
-async function bootWeb(bin: string, root: string, env: NodeJS.ProcessEnv, port: number): Promise<{ child: ChildProcess; url: string }> {
+async function bootWeb(bin: string, root: string, env: NodeJS.ProcessEnv, port: number, output: { text: string }): Promise<{ child: ChildProcess; url: string }> {
   const child = spawn(bin, ['web', '--port', String(port), '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
   const stdout = child.stdout
   const stderr = child.stderr
   if (stdout === null || stderr === null) { child.kill('SIGTERM'); throw new Error('dsh web: stdio pipes are missing') }
   try {
-    const url = await waitForReady(stdout, stderr, child)
+    const url = await waitForReady(stdout, stderr, child, output)
     return { child, url }
   } catch (error) {
     child.kill('SIGTERM')
@@ -173,14 +176,15 @@ async function bootWeb(bin: string, root: string, env: NodeJS.ProcessEnv, port: 
 }
 
 // The ready line on stdout/stderr is the CLI's own contract (`dsh web: http://…`).
-function waitForReady(stdout: Readable, stderr: Readable, child: ChildProcess): Promise<string> {
+// The shared `output` buffer keeps accumulating after the resolve (the listeners
+// stay attached), so callers can read startup activation diagnostics later.
+function waitForReady(stdout: Readable, stderr: Readable, child: ChildProcess, output: { text: string }): Promise<string> {
   return new Promise((resolve, reject) => {
-    let output = ''
-    const fail = (message: string): void => reject(new Error(`${message}\noutput:\n${output}`))
+    const fail = (message: string): void => reject(new Error(`${message}\noutput:\n${output.text}`))
     const timer = setTimeout(() => fail(`dsh web not ready in ${READY_TIMEOUT_MS / 1000}s`), READY_TIMEOUT_MS)
     const onData = (chunk: Buffer): void => {
-      output += chunk.toString()
-      const match = READY_LINE.exec(output)
+      output.text += chunk.toString()
+      const match = READY_LINE.exec(output.text)
       if (match === null) return
       const url = match[1]
       if (url === undefined) return

@@ -1,0 +1,31 @@
+{
+  "name": "@apkawa/image-editor",
+  "description": "Standalone image annotation editor (plain TypeScript + canvas, zero dsh/React deps)",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "dist"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "pretest:e2e": "pnpm build",
+    "test:e2e": "playwright test",
+    "start": "vite"
+  }
+}
