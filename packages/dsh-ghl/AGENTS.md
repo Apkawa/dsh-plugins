@@ -22,8 +22,8 @@ separate runs.
 * `index.ts` — composition root: plugin `name` (`ghl`), the `inject` list
   (empty), the `Config` schema (empty), and `apply` composing the GitHub
   issue provider over a TTL/budget cache and the `/ghl` RPC channel —
-  mounted on the host `webServer` via a nested `ctx.inject` (the 0.2.0-rc.2
-  host-RPC workaround).
+  mounted on the host `webServer` via a nested `ctx.inject` (the host-RPC
+  workaround — the host channel bug persists on both matrix versions).
 * `issues.ts` — the provider-agnostic `BaseIssue` contract (`Issue`,
   `RepoRef`) and the `GitHubIssue` implementation over the public REST API
   (no token) and an injected `Fetcher` boundary.
@@ -57,7 +57,20 @@ host-side modules (vitest node env, in-process doubles, no network);
 `tests/unit/client/{format,issue-store}.test.ts` — the client formatting and
 the issue snapshot store over a fake RPC (same env, no jsdom). `pnpm test`.
 
-**E2E**: none yet (scaffold). `pnpm test:e2e` runs the vitest e2e lane.
+**E2E**: `tests/e2e/server/{boot,rpc}.test.ts` — live e2e against an
+independent `dsh web` with the plugin linked, via the vitest wrapper
+`tests-helpers/e2e/dsh-fixture.ts` over the shared launch core
+`tests-helpers/e2e/dsh.ts` (manual CLI `scripts/e2e-live.ts` at the repo
+root); the boot smoke and the RPC lane run the version matrix via
+`describe.each(E2E_DSH_VERSIONS)` (`0.2.0-rc.2` + `0.2.1-rc.5`); 180 s test
+timeouts (`vitest.e2e.config.ts`); no browser, no internet.
+`tests/e2e/acceptance.spec.ts` + `playwright.config.ts` — the playwright
+lane (via `tests-helpers/e2e/live.ts`) for the "Issues" tab and its
+missing-repo empty state, iterating the same `E2E_DSH_VERSIONS`, with
+artifacts under `.tmp/playwright/dsh-ghl`. `pnpm test:e2e` runs the vitest
+lane; the playwright lane runs separately; `pnpm e2e:live` boots a throwaway
+instance manually. Test files import the helpers via the
+`@root/tests-helpers/…` alias.
 
 ## Hard constraints
 

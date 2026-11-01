@@ -845,6 +845,9 @@ for (const version of E2E_DSH_VERSIONS) {
       await page.goto(url)
       await dismissIfVisible(page, 'Preview Notice', 'Continue')
       await dismissIfVisible(page, 'Add an API key to get started', 'Configure later')
+      // On dsh 0.2.1-rc.5 the same onboarding dialog is named "Get started"
+      // (buttons "Add API Key" / "Sign in") and is dismissed via "Close".
+      await dismissIfVisible(page, 'Get started', 'Close')
       // A session-less home shows the workspace chooser (fresh) or a
       // "New session" button (registered workspace); an open session shows
       // the rightbar expand button (collapsed) or the open rightbar. The
@@ -867,8 +870,10 @@ for (const version of E2E_DSH_VERSIONS) {
         // Open a session for the registered workspace.
         await newSession.click()
       }
-      // A freshly live session re-triggers the API key onboarding dialog.
+      // A freshly live session re-triggers the API key onboarding dialog
+      // ("Get started" with a "Close" button on dsh 0.2.1-rc.5).
       await dismissIfVisible(page, 'Add an API key to get started', 'Configure later')
+      await dismissIfVisible(page, 'Get started', 'Close')
       await Promise.race([
         expand.waitFor({ state: 'visible', timeout: 30_000 }),
         open.waitFor({ state: 'visible', timeout: 30_000 }),

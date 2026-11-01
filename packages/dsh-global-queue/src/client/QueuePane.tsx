@@ -30,8 +30,14 @@ export function QueuePane(props: QueuePaneProps) {
     return unsubscribe
   }, [])
 
-  const reorder = (id: string, toIndex: number): void => {
-    void callRpc('reorder', { id, toIndex }).then(() => refresh())
+  // The hovered row is the slot the carried item lands in. Its index in the
+  // list without the carried item is one lower whenever the carried item sits
+  // at or above it — the store's `toIndex` is that post-removal index.
+  const drop = (): void => {
+    if (draggingId === null || dragOverIndex === null) return
+    const carriedIndex = items.findIndex(candidate => candidate.id === draggingId)
+    if (carriedIndex === -1) return
+    void callRpc('reorder', { id: draggingId, toIndex: carriedIndex <= dragOverIndex ? dragOverIndex - 1 : dragOverIndex }).then(() => refresh())
   }
   const remove = (id: string): void => {
     void callRpc('remove', { id }).then(() => refresh())
@@ -51,13 +57,12 @@ export function QueuePane(props: QueuePaneProps) {
           <Row
             key={item.id}
             item={item}
-            index={index}
-            dragging={draggingId === item.id}
+            shifted={dragOverIndex !== null && index < dragOverIndex}
             dropTarget={dragOverIndex === index}
             onDragStart={() => setDraggingId(item.id)}
             onDragEnd={endDrag}
             onDragOver={() => setDragOverIndex(index)}
-            onReorder={reorder}
+            onDrop={drop}
             onRemove={remove}
             onOpenSession={props.openSession}
           />
@@ -69,13 +74,12 @@ export function QueuePane(props: QueuePaneProps) {
 
 type RowProps = {
   item: QueueItem
-  index: number
-  dragging: boolean
+  shifted: boolean
   dropTarget: boolean
   onDragStart: () => void
   onDragEnd: () => void
   onDragOver: () => void
-  onReorder: (id: string, toIndex: number) => void
+  onDrop: () => void
   onRemove: (id: string) => void
   onOpenSession: (sessionId: string) => void
 }
@@ -134,16 +138,15 @@ function Row(props: RowProps) {
     }
     props.onDragStart()
   }
-  // Drop target = the whole row: dragover marks it, drop reorders onto it.
+  // Drop target = the whole row: dragover marks the slot, drop hands it to the
+  // pane, which owns the carried item's index.
   const onDragOver = (event: DragEvent): void => {
     event.preventDefault()
     props.onDragOver()
   }
   const onDrop = (event: DragEvent): void => {
     event.preventDefault()
-    const dragged = event.dataTransfer.getData('text/plain')
-    if (dragged === '' || dragged === item.id) return
-    props.onReorder(dragged, props.index)
+    props.onDrop()
   }
 
   const stats = formatStats(item)
@@ -157,7 +160,7 @@ function Row(props: RowProps) {
       ref={rowRef}
       data-testid="global-queue-row"
       data-item-id={item.id}
-      className={`${css.row} ${props.dragging ? css.dragging : ''} ${props.dropTarget ? css.dropTarget : ''}`.trim()}
+      className={`${css.row} ${props.shifted ? css.shifted : ''} ${props.dropTarget ? css.dropTarget : ''}`.trim()}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >

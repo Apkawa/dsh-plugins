@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
-import { createRunner, DEFAULT_SCRIPT_PATH, type DdgsRunner } from '../../../src/runner.ts'
+import { createRunner, DEFAULT_SCRIPT_PATH, type DdgsRunner, type RunnerResult } from '../../../src/runner.ts'
 
 /**
  * Live e2e, one real search per backend: a single shared runner (real `uv`,
@@ -36,12 +36,40 @@ describe.skipIf(!uvAvailable)('ddgs backends (real uv + network)', () => {
   }, 30_000)
 
   describe.each(['duckduckgo', 'bing', 'yandex'])('backend %s', backend => {
+    // Engines intermittently return zero results: `ddgs-search.py` turns
+    // `DDGSException: No results found.` into exit 1, so one attempt on a valid
+    // query can fail. Probes showed duckduckgo throttling in runs of 5-12
+    // consecutive failures that lift only after tens of seconds (so it retries
+    // with a long backoff), bing failing as isolated attempts (a few retries
+    // suffice), yandex clean. Retry the same search and assert on whichever
+    // attempt yields real results; once the attempts run out, the last error is
+    // what the test surfaces.
+    const duckduckgo = backend === 'duckduckgo'
+    const attempts = duckduckgo ? 12 : 4
+    const backoffMs = duckduckgo ? 5_000 : 2_000
+
     it('returns real search results with URLs', async () => {
-      const result = await runner.search({ query: 'react version', backend, maxResults: 3 })
+      const result = await searchWithRetry(1)
       expect(result.items.length).toBeGreaterThanOrEqual(1)
       for (const item of result.items) {
         expect(item.href).toMatch(/^https?:\/\//)
       }
     })
+
+    function searchWithRetry(attempt: number): Promise<RunnerResult> {
+      return runner.search({ query: 'react version', backend, maxResults: 3 }).then(result => {
+        if (result.items.length === 0 && attempt < attempts) return backoffThenRetry(attempt)
+        return result
+      }, error => {
+        // Only the empty-results failure is a transient engine hiccup; a
+        // timeout or malformed output is a real failure and must surface.
+        if (attempt >= attempts || !(error instanceof Error) || !error.message.includes('No results found')) throw error
+        return backoffThenRetry(attempt)
+      })
+    }
+
+    function backoffThenRetry(attempt: number): Promise<RunnerResult> {
+      return new Promise<void>(resolve => setTimeout(resolve, backoffMs)).then(() => searchWithRetry(attempt + 1))
+    }
   })
-}, 120_000)
+}, 180_000)

@@ -43,18 +43,6 @@ export function IssuePane(props: IssuePaneProps) {
     return unsubscribe
   }, [workspacePath])
 
-  if (error !== null) {
-    return (
-      <div data-testid="ghl-pane" className={css.pane}>
-        <div className={css.error} data-testid="ghl-error">
-          <p className={css.errorMessage}>{error.message}</p>
-          <span className={css.errorCode}>{error.code}</span>
-          <button type="button" className={css.ghost} data-testid="ghl-reload" onClick={() => void refresh(workspacePath)}>Reload</button>
-        </div>
-      </div>
-    )
-  }
-
   if (listLoading && issues.length === 0) {
     return (
       <div data-testid="ghl-pane" className={css.pane}>
@@ -66,10 +54,27 @@ export function IssuePane(props: IssuePaneProps) {
     )
   }
 
+  // A failed detection is the no-repo case, not an error to show: the Host's
+  // detectRepo answers the failure envelope and the store keeps `repo` null
+  // with it, so the missing-repo empty state must come before the error state.
+  // The error state stays reachable for failures that happen with a repo
+  // detected (list/get).
   if (repo === null) {
     return (
       <div data-testid="ghl-pane" className={css.pane}>
         <p className={css.empty} data-testid="ghl-missing-repo">No GitHub repository detected for this workspace</p>
+      </div>
+    )
+  }
+
+  if (error !== null) {
+    return (
+      <div data-testid="ghl-pane" className={css.pane}>
+        <div className={css.error} data-testid="ghl-error">
+          <p className={css.errorMessage}>{error.message}</p>
+          <span className={css.errorCode}>{error.code}</span>
+          <button type="button" className={css.ghost} data-testid="ghl-reload" onClick={() => void refresh(workspacePath)}>Reload</button>
+        </div>
       </div>
     )
   }

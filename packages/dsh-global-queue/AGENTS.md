@@ -24,8 +24,8 @@ separate runs.
   composing the `QueueStore`, the watcher (over the `agents` / `sessions` /
   `sessionPersistence` / `sessionProjections` seams, `agent/status` and
   `session/event` events), and the `/global-queue` RPC channel — mounted on
-  the host `webServer` via a nested `ctx.inject` (the 0.2.0-rc.2
-  host-RPC workaround).
+  the host `webServer` via a nested `ctx.inject` (the host-RPC workaround —
+  the host channel bug persists on both matrix versions).
 * `queue/` — `types.ts` (`QueueItem`, the `queued`/`running`/`done`/`interrupted`
   statuses), `store.ts` (file-backed store: atomic writes + cross-process
   lock), `watcher.ts` (global idle detection, item execution — create /
@@ -64,7 +64,7 @@ independent `dsh web` with the plugin linked, via the vitest wrapper
 `tests-helpers/e2e/dsh-fixture.ts` over the shared launch core
 `tests-helpers/e2e/dsh.ts` (manual CLI `scripts/e2e-live.ts` at the repo
 root); the boot smoke and the RPC lane run the version matrix via
-`describe.each(E2E_DSH_VERSIONS)`; 120 s test timeouts
+`describe.each(E2E_DSH_VERSIONS)`; 180 s test timeouts
 (`vitest.e2e.config.ts`); no browser, no internet.
 `tests/e2e/acceptance.spec.ts` + `playwright.config.ts` — the playwright
 lane (via `tests-helpers/e2e/live.ts`) for the "Show queue" tab and the

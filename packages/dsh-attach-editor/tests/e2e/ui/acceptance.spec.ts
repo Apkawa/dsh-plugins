@@ -307,6 +307,9 @@ for (const version of E2E_DSH_VERSIONS) {
       await page.goto(url)
       await dismissIfVisible(page, 'Preview Notice', 'Continue')
       await dismissIfVisible(page, 'Add an API key to get started', 'Configure later')
+      // On dsh 0.2.1-rc.5 the same onboarding dialog is named "Get started"
+      // (buttons "Add API Key" / "Sign in") and is dismissed via "Close".
+      await dismissIfVisible(page, 'Get started', 'Close')
       // A session-less home shows the workspace chooser (fresh) or a "New
       // session" button (registered workspace); an open session shows the
       // rightbar expand button (collapsed) or the open rightbar. The states are
@@ -333,6 +336,7 @@ for (const version of E2E_DSH_VERSIONS) {
         for (;;) {
           await dismissIfVisible(page, 'Preview Notice', 'Continue')
           await dismissIfVisible(page, 'Add an API key to get started', 'Configure later')
+          await dismissIfVisible(page, 'Get started', 'Close')
           if (await chooser.click({ timeout: 2_000 }).then(() => true).catch(() => false)) break
           if (Date.now() > deadline) throw new Error('the workspace chooser never became clickable')
         }
@@ -354,6 +358,7 @@ for (const version of E2E_DSH_VERSIONS) {
         ]).catch(() => null)
         if (rightbar === true) break
         await dismissIfVisible(page, 'Add an API key to get started', 'Configure later')
+        await dismissIfVisible(page, 'Get started', 'Close')
         await dismissIfVisible(page, 'Preview Notice', 'Continue')
         if (Date.now() > deadline) throw new Error('neither the rightbar nor an onboarding dialog appeared within the settle window')
       }

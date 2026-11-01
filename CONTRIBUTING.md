@@ -23,22 +23,26 @@ Shared infra: a single plumbing core in `tests-helpers/e2e/dsh.ts` (`launchDsh` 
 
 Lanes:
 
-- **vitest e2e lane** — `tests/e2e/server/*.test.ts`, no browser: drives the live instance over its HTTP API via the vitest wrapper (`tests-helpers/e2e/dsh-fixture.ts`). Provider API keys are inherited from the caller. The boot smoke suite (`tests/e2e/server/boot.test.ts`) runs the version matrix via `describe.each(E2E_DSH_VERSIONS)` — `0.2.0-rc.2`.
-- **playwright acceptance lane** — `tests/e2e/acceptance.spec.ts` + `playwright.config.ts` (model-settings today), real chromium: the instance is keyless by design (provider API keys are stripped), and browsers come from the shared `~/.cache/ms-playwright` cache — never run `playwright install`.
-- **manual CLI** — `scripts/e2e-live.ts`, a thin wrapper over the core: flags `--package <name>` (required — a dir under `packages/`), `--port <n>` (default 3081), `--keep` (preserve the temp root for debugging; `E2E_KEEP=1` does the same for the playwright lane), `--version <v>` (default `0.2.0-rc.2`). SIGINT/SIGTERM stop the instance and remove the temp root unless `--keep`.
+- **vitest e2e lane** — `tests/e2e/server/*.test.ts`, no browser: drives the live instance over its HTTP API via the vitest wrapper (`tests-helpers/e2e/dsh-fixture.ts`). Provider API keys are inherited from the caller. The boot smoke suite (`tests/e2e/server/boot.test.ts`) runs the version matrix via `describe.each(E2E_DSH_VERSIONS)` — `0.2.0-rc.2` + `0.2.1-rc.5`.
+- **playwright acceptance lane** — `tests/e2e/acceptance.spec.ts` + `playwright.config.ts` (model-settings, dsh-global-queue, dsh-ghl; dsh-attach-editor's spec sits under `tests/e2e/ui/`), real chromium, iterating the same `E2E_DSH_VERSIONS`: the instance is keyless by design (provider API keys are stripped), and browsers come from the shared `~/.cache/ms-playwright` cache — never run `playwright install`.
+- **manual CLI** — `scripts/e2e-live.ts`, a thin wrapper over the core: flags `--package <name>` (required — a dir under `packages/`), `--port <n>` (default 3081), `--keep` (preserve the temp root for debugging; `E2E_KEEP=1` does the same for the playwright lane), `--version <v>` (default `0.2.1-rc.5`). SIGINT/SIGTERM stop the instance and remove the temp root unless `--keep`.
 
 Run from the package dir:
 
 ```
-pnpm test:e2e     # vitest e2e lane; model-settings then runs the playwright lane (vitest && playwright test)
+pnpm test:e2e     # vitest e2e lane; model-settings and dsh-attach-editor also run the playwright lane (vitest && playwright test), dsh-global-queue and dsh-ghl run it separately
 pnpm e2e:live     # manual throwaway instance: node ../../scripts/e2e-live.ts --package <name>
 ```
 
-The dsh binary is resolved identically in every lane: env `E2E_DSH_BIN` (must exist — the run hard-fails with `E2E_DSH_BIN does not exist: …` otherwise, no PATH fallback) → `ensureDshVersion(version)`, which auto-provisions the selected version on first launch: a throwaway pnpm project under `.tmp/dsh-versions/<version>` (~20–60 s; `CI=1`, `pnpm_config_store_dir=<repo>/.cache/pnpm/v11`, ~180 s timeout, serialized on a per-version lock); subsequent launches are instant. Those throwaway projects are exempt from the frozen-lockfile rule — the repo itself still installs frozen. dsh 0.2.0-rc.2 prints a `?token=…` ready URL which the lanes exchange for a session cookie that suffices for in-session requests.
+The dsh binary is resolved identically in every lane: env `E2E_DSH_BIN` (must exist — the run hard-fails with `E2E_DSH_BIN does not exist: …` otherwise, no PATH fallback) → `ensureDshVersion(version)`, which auto-provisions the selected version on first launch: a throwaway pnpm project under `.tmp/dsh-versions/<version>` (~20–60 s; `CI=1`, `pnpm_config_store_dir=<repo>/.cache/pnpm/v11`, ~180 s timeout, serialized on a per-version lock); subsequent launches are instant. Those throwaway projects are exempt from the frozen-lockfile rule — the repo itself still installs frozen. dsh 0.2.0-rc.2 and 0.2.1-rc.5 both print a `?token=…` ready URL which the lanes exchange for a session cookie that suffices for in-session requests.
 
 Playwright artifacts land under `.tmp/playwright/<package>`, caches under `.cache/`.
 
-Known issue: on dsh 0.2.0-rc.2 the host RPC channel is broken host-side (the `rpc-host` effect registers in a context without `webServer`), so model-settings mounts its own `/model-settings` prefix route on the host `webServer` (nested inject); the host bug remains in dsh (upstream ask). 0.2.0-rc.2 is the validated e2e baseline.
+Constraints:
+
+- plugin peer ranges — the dsh compatibility gate (on both matrix versions) validates `peerDependencies` named `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` against the runtime version with `semver.satisfies(runtime, range, { includePrerelease: true })`; `catalog:` is not a valid range, so `dsh plugin add` rejects with `dsh: installation rejected: Plugin … requirements {…}` and the plugin stays disabled. Manifests therefore declare concrete ranges (`^0.2.0-rc.2` satisfies both matrix versions); tooling devDependencies may keep `catalog:`, and other peers (`cordis`, `schemastery`) are never checked.
+
+Known issue: on dsh 0.2.0-rc.2 and 0.2.1-rc.5 the host RPC channel is broken host-side (the `rpc-host` effect registers in a context without `webServer`), so plugins mount their own prefix routes (`/model-settings`, `/global-queue`, `/ghl`) on the host `webServer` (nested inject); the host bug remains in dsh (upstream ask). 0.2.1-rc.5 is the validated e2e baseline; 0.2.0-rc.2 stays a matrix lane.
 
 ## Working style
 

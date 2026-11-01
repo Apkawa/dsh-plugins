@@ -64,8 +64,9 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-/* In-flight drag state: the carried row's origin dims. */
-.dragging {
+/* In-flight drag state: the rows above the receiving slot shift down when the
+   carried item lands, so they recede (the carried row is among them). */
+.shifted {
   opacity: 0.4;
 }
 

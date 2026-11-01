@@ -8,7 +8,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/e2e/**/*.test.ts'],
-    timeout: 120_000,
+    // Version provisioning in boot hooks takes up to 180 s; tests share that budget.
+    testTimeout: 180_000,
     hookTimeout: 180_000,
   },
 })

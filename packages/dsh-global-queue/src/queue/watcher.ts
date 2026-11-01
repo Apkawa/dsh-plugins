@@ -62,10 +62,12 @@ export function createWatcher(deps: WatcherDeps): { start(): void; stop(): void;
    * delivers the item's text as the turn's prompt, and a freshly created
    * session is attached to the item's workspace. The pre-run token total is
    * recorded for the completion stage. A failure starting the session
-   * interrupts the item rather than leaving it `running` blank.
+   * interrupts the item rather than leaving it `running` blank. Only items this
+   * process entered are candidates: an event wake must not pick up a row a
+   * foreign writer put into the shared file.
    */
   const executeNext = async () => {
-    const item = deps.store.list().find(candidate => candidate.status === 'queued')
+    const item = deps.store.list().find(candidate => candidate.status === 'queued' && deps.store.isIntake(candidate.id))
     if (item === undefined) return
 
     const target = item.targetSessionId
@@ -135,6 +137,8 @@ export function createWatcher(deps: WatcherDeps): { start(): void; stop(): void;
   }
 
   const start = () => {
+    // A restart resumes the queued items the file already holds.
+    deps.store.adoptIntake()
     /** Restart recovery: running items whose session has no live agent are interrupted; live ones finish via turn/end. */
     deps.store.list()
       .filter(item => item.status === 'running' && item.sessionId !== undefined && deps.agents.get(item.sessionId) === undefined)

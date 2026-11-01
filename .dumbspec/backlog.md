@@ -22,3 +22,17 @@
 7. [x] ctrl+z для undo 
 8. [x] толщина линии 2px неюзабельна. по умолчанию сделать толщину линии 8px
 9. [x] убрать px где указываются размеры, у толщины линии и размера шрифта. (в тултипах px оставить)
+
+## dsh (upstream)
+
+1. [ ] Бакленд RPC-канала хоста: `@deepseek-ai/dsh-client-connection/src/rpc-host.ts` регистрирует плагинный канал через `owner.effect(() => owner.webServer.register(route))`, где `owner = this.ctx` без inject `webServer` → `cannot get property "webServer" without inject`; нативный канал плагинов никогда не монтируется (`/api/<channel>/...` → 404). Воспроизводится на обеих матричных версиях: `0.2.0-rc.2` и `0.2.1-rc.5` (tag `dsh-v0.2.1-rc.5`, HEAD `b830ec95`). Наш обходной путь: плагины сами вешают prefix-маршруты (`/model-settings`, `/global-queue`, `/ghl`) через вложенный `ctx.inject(['webServer'], …)` — конфликт-free. Найден в `2026-10-31_dsh-0.2.1-rc5-plugins` (probe P3, `.tmp/rpc-probe/`).
+2. [ ] rc.5: URL-роуты `/settings` и `/plugins` отдают пустое тело; настройки доступны только через `Account menu` popover → menuitem `Settings` (в sidebar нет кнопки `Settings`, только `Plugins`/`Automation tasks`/`More`). Найден в `2026-10-31_dsh-0.2.1-rc5-plugins` (P4); acceptance lanes адаптированы, продукт-роуты не чинились.
+3. [ ] Нет upgrade-guide для rc.4→rc.5 в `dsh/docs/upgrade-guide/` (изменения rc.5: thinking rendering + `reasoning.body rawText` — документированы только в патчнотах).
+
+## dsh-web-search-ddgs
+
+4. [ ] DDG-троттлинг: `duckduckgo` периодически отдаёт пустые результаты (`DDGSException: No results found.` → exit 1) сериями по 5–12 подряд, троттлинг отпускается через десятки секунд; `bing` — одиночные сбои, `yandex` чистый. Сейчас retry только в test lanes (`c1a6212`); провайдер в продукте отдаёт ошибку туле как есть. Кандидат: retry transient «No results found» на уровне provider/runner.
+
+## dsh-global-queue
+
+5. [ ] intake-гейт watcher'а (фикс `175dd4b`): items, записанные в файл другим инстансом, не исполняются до перезапуска — documented trade-off в README. Кандидат: cross-instance adoption (кто должен подхватить чужой item при нескольких `dsh web`).

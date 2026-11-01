@@ -189,6 +189,25 @@ describe('QueueStore', () => {
     expect(new QueueStore(path).list()).toHaveLength(20)
   })
 
+  it('intake covers this instance adds and the queued items adopted at startup', () => {
+    const path = join(tmpDir, 'intake.global-queue.json')
+    const written = new QueueStore(path)
+    const here = written.add({ text: 'a', workspacePath: '/ws', targetSessionId: null })
+    const finished = written.add({ text: 'b', workspacePath: '/ws', targetSessionId: null })
+    written.update(finished.id, { status: 'done' })
+
+    // A fresh instance sees the file's queued items as its own intake (restart),
+    // and a finished item is never a candidate.
+    const restarted = new QueueStore(path)
+    expect(restarted.isIntake(here.id)).toBe(false)
+    expect(restarted.isIntake(finished.id)).toBe(false)
+    restarted.adoptIntake()
+    expect(restarted.isIntake(here.id)).toBe(true)
+    expect(restarted.isIntake(finished.id)).toBe(false)
+    expect(restarted.add({ text: 'c', workspacePath: '/ws', targetSessionId: null }).status).toBe('queued')
+    expect(restarted.isIntake(here.id)).toBe(true)
+  })
+
   it('persists a valid JSON file with mode 0o600', () => {
     const path = join(tmpDir, '.global-queue.json')
     const store = new QueueStore(path)

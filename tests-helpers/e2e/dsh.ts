@@ -3,11 +3,11 @@
  * home with the package under test linked into its `web` profile, and hand back
  * a handle (ready URL, parsed port, session cookie, child process) plus a stopper.
  *
- * The matrix targets only 0.2.0-rc.2, which tokenizes the ready URL (the URL
- * carries a `token=` that is exchanged once for a session cookie). That is
- * resolved here so callers always talk to the plain URL with the cookie (when
- * any). No `@playwright/test` dependency — this core is shared
- * by the vitest and playwright lanes alike.
+ * Both matrix versions tokenize the ready URL (the URL carries a `token=`
+ * that is exchanged once for a session cookie). That is resolved here so
+ * callers always talk to the plain URL with the cookie (when any). No
+ * `@playwright/test` dependency — this core is shared by the vitest and
+ * playwright lanes alike.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
@@ -23,10 +23,10 @@ const PROVISION_STALE_MS = 10 * 60_000
 const PROVISION_TIMEOUT_MS = 180_000
 const ONLY_BUILT = ['@deepseek-ai/dsh-subprocess-local', '@google/genai', 'koffi', 'node-pty', 'protobufjs']
 const KEYLESS_STRIP = ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DASHSCOPE_API_KEY', 'DSH_API_KEY']
-// Matches the tokenized ready URL from 0.2.0-rc.2 (a tokenless URL would also match).
+// Matches the tokenized ready URL on both matrix versions (a tokenless URL would also match).
 const READY_LINE = /dsh web: (http:\/\/[^\s]+)/
 
-export const E2E_DSH_VERSIONS = ['0.2.0-rc.2'] as const
+export const E2E_DSH_VERSIONS = ['0.2.0-rc.2', '0.2.1-rc.5'] as const
 
 /** A running e2e instance plus everything needed to talk to it and tear it down. */
 export interface DshHandle {
@@ -44,7 +44,7 @@ export interface DshHandle {
 
 /**
  * Launch an isolated `dsh web` with `packageName` linked into its `web` profile.
- * `version` selects the dsh to run (defaults to 0.2.0-rc.2); an
+ * `version` selects the dsh to run (defaults to 0.2.1-rc.5); an
  * `E2E_DSH_BIN` override (which must exist) wins and forces `handle.version` to
  * null. `keyless` strips provider API keys from the child env.
  */
@@ -52,7 +52,7 @@ export async function launchDsh(opts: { packageName: string; port?: number; keyl
   const packageDir = join(REPO_ROOT, 'packages', opts.packageName)
   if (!existsSync(packageDir)) throw new Error(`package "${opts.packageName}" not found: no packages/${opts.packageName} in this repo`)
   const bin = await resolveDshBinary(opts.version)
-  const version = process.env.E2E_DSH_BIN !== undefined ? null : (opts.version ?? '0.2.0-rc.2')
+  const version = process.env.E2E_DSH_BIN !== undefined ? null : (opts.version ?? '0.2.1-rc.5')
   const root = createTempRoot()
   const env = childEnv(root, opts.keyless === true)
   ensureBuilt(packageDir, env)
@@ -79,7 +79,7 @@ export async function resolveDshBinary(version?: string): Promise<string> {
     if (!existsSync(override)) throw new Error(`E2E_DSH_BIN does not exist: ${override} — point it at a dsh binary`)
     return override
   }
-  return ensureDshVersion(version ?? '0.2.0-rc.2')
+  return ensureDshVersion(version ?? '0.2.1-rc.5')
 }
 
 /**

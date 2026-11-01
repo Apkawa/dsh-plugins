@@ -20,9 +20,26 @@ const SLEEP_BUFFER = new Int32Array(new SharedArrayBuffer(4))
 export class QueueStore {
   constructor(private filePath: string) {}
 
+  /** Ids entered through this instance: an `add()` here, or a queued item the file already held at startup. */
+  private readonly intake = new Set<string>()
+
   /** All items in file order; `[]` when the file does not exist yet. */
   list(): readonly QueueItem[] {
     return readItems(this.filePath)
+  }
+
+  /**
+   * Adopt the queued items already in the file, so a restart resumes them. The
+   * file is shared across processes: an item written into it by another process
+   * is listed but not adopted here, and runs only after a restart.
+   */
+  adoptIntake(): void {
+    this.list().filter(item => item.status === 'queued').forEach(item => this.intake.add(item.id))
+  }
+
+  /** Whether this item entered through this instance, so the watcher may run it. */
+  isIntake(id: string): boolean {
+    return this.intake.has(id)
   }
 
   add(input: { text: string; workspacePath: string; targetSessionId: string | null; agentPreset?: string }): QueueItem {
@@ -40,6 +57,7 @@ export class QueueStore {
     // Optional field: carry it only when present, so items without one stay key-free.
     if (input.agentPreset !== undefined) item.agentPreset = input.agentPreset
     this.mutate(items => [...items, item])
+    this.intake.add(item.id)
     return item
   }
 

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
+import type { WebSearchResult } from '@deepseek-ai/dsh-web'
 import { DdgsSearchProvider, DEFAULT_BACKEND } from '../../../src/provider.ts'
 import { createRunner, DEFAULT_SCRIPT_PATH } from '../../../src/runner.ts'
 
@@ -43,12 +44,37 @@ describe.skipIf(!uvAvailable)('live ddgs search (real uv + network)', () => {
     expect(provider.id).toBe('ddgs')
   })
 
+  // DDG — the provider's default backend — intermittently returns zero
+  // results: `ddgs-search.py` turns `DDGSException: No results found.` into
+  // exit 1, so a single attempt on a valid query can fail. The failures come in
+  // runs of 5-12 failed attempts and the throttle lifts only after tens of
+  // seconds, so retry the same search with a long backoff and assert on
+  // whichever attempt yields real results; if every attempt fails, the last
+  // error is what the test surfaces.
+  const attempts = 12
+
   it('returns real search results with URLs', async () => {
-    const result = await provider.search({ query: 'react version', maxResults: 5 })
+    const result = await searchWithRetry(1)
     expect(result.truncated).toBe(false)
     expect(result.sources.length).toBeGreaterThanOrEqual(1)
     for (const source of result.sources) {
       expect(source.url).toMatch(/^https?:\/\//)
     }
   })
-}, 120_000)
+
+  function searchWithRetry(attempt: number): Promise<WebSearchResult> {
+    return provider.search({ query: 'react version', maxResults: 5 }).then(result => {
+      if (result.sources.length === 0 && attempt < attempts) return backoffThenRetry(attempt)
+      return result
+    }, error => {
+      // Only the empty-results failure is a transient engine hiccup; a
+      // timeout or malformed output is a real failure and must surface.
+      if (attempt >= attempts || !(error instanceof Error) || !error.message.includes('No results found')) throw error
+      return backoffThenRetry(attempt)
+    })
+  }
+
+  function backoffThenRetry(attempt: number): Promise<WebSearchResult> {
+    return new Promise<void>(resolve => setTimeout(resolve, 5_000)).then(() => searchWithRetry(attempt + 1))
+  }
+}, 180_000)

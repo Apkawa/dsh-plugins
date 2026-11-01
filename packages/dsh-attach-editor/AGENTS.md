@@ -79,9 +79,9 @@ preview overlay, and pane use (`--dsw-*` tokens only).
 **E2E**: `tests/e2e/server/boot.test.ts` — live boot smoke over the vitest
 wrapper `tests-helpers/e2e/dsh-fixture.ts` on the shared core
 `tests-helpers/e2e/dsh.ts`, `describe.each(E2E_DSH_VERSIONS)`
-(`0.2.0-rc.2`): the plugin is listed in the fresh `web` profile, the app
-answers HTTP 200, and the child's captured stdout+stderr contains no
-`did not activate` (`handle.readOutput()`).
+(`0.2.0-rc.2` + `0.2.1-rc.5`): the plugin is listed in the fresh `web`
+profile, the app answers HTTP 200, and the child's captured stdout+stderr
+contains no `did not activate` (`handle.readOutput()`).
 `tests/e2e/ui/acceptance.spec.ts` + `playwright.config.ts` — the playwright
 lane (helpers from `tests-helpers/e2e/live.ts` and the core launcher), three
 tests over one instance: a fresh home connects a workspace through a `zenity`

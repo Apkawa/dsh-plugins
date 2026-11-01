@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -344,6 +344,34 @@ describe('queue watcher', () => {
     watcher.nudge()
     await flush()
     expect(store.list().find(candidate => candidate.id === item.id)?.status).toBe('running')
+  })
+
+  it('leaves a queued item written into the file after startup queued until a restart adopts it', async () => {
+    const dir = await mkdtemp(join(repoTmp, 'global-queue-watcher-foreign-'))
+    createdDirs.push(dir)
+    const filePath = join(dir, 'queue.json')
+    const deps = makeDeps(new QueueStore(filePath))
+    const watcher = createWatcher(deps)
+    watcher.start()
+    await flush()
+
+    // A foreign writer puts a queued row straight into the shared file; an event
+    // wake must not pick it up, so its status stays exactly as written.
+    await writeFile(filePath, `${JSON.stringify([{ id: 'foreign', text: 't', workspacePath: '/ws/r', targetSessionId: null, status: 'queued', createdAt: 1, updatedAt: 1 }])}\n`)
+    deps.agents.set('a1', 'idle')
+    deps.events.emitAgentStatus('a1', 'idle')
+    await flush()
+
+    expect(deps.agents.createCalls).toHaveLength(0)
+    expect(new QueueStore(filePath).list().find(candidate => candidate.id === 'foreign')?.status).toBe('queued')
+
+    // The next process adopts the file's queued items at startup.
+    const restarted = makeDeps(new QueueStore(filePath))
+    createWatcher(restarted).start()
+    await flush()
+
+    expect(restarted.agents.createCalls).toHaveLength(1)
+    expect(restarted.agents.createCalls[0]?.meta.cwd).toBe('/ws/r')
   })
 
   it('delivers the item text on the created session', async () => {

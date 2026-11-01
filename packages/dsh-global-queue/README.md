@@ -37,7 +37,10 @@ survives restarts.
   selector) hosts an **Add to queue** button: it queues the composer's draft
   for the **current session** or a **new session**, then clears the draft.
 - **In the background** — the watcher treats the model as globally free when
-  every live agent is idle and then runs the first queued item. Statuses are
+  every live agent is idle and then runs the first queued item. It runs the
+  items this process entered (through the UI or the RPC channel) plus the
+  queued items the file already held at boot; a row written into the shared
+  file by some outside tool runs after the next restart. Statuses are
   `queued` → `running` → `done` (the turn completed) or `interrupted` (the
   turn ended for any other reason — aborted, blocked, error — or dsh was
   restarted mid-run). Each finished item records its total runtime and
